@@ -99,8 +99,8 @@ Talisman(app,
 
 # Rate limiting
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
+    app=app,
     default_limits=["1000 per hour"],
     storage_uri=app.config.get('RATE_LIMIT_STORAGE_URL', 'memory://')
 )
