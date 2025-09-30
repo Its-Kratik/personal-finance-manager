@@ -1,0 +1,2060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Personal Finance Manager Pro - Advanced financial tracking and budgeting application" />
+    <meta name="keywords" content="finance, budget, expense tracker, money management" />
+    <meta name="author" content="Finance Manager Team" />
+    
+    <title>Personal Finance Manager Pro</title>
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    
+    <!-- External libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
+    
+    <!-- Favicon and app icons -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}" />
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.png') }}" />
+    <meta name="theme-color" content="#4F8A8B" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}" />
+</head>
+<body data-theme="auto">
+    <!-- Skip Navigation for Screen Readers -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <!-- Live Region for Dynamic Announcements -->
+    <div id="live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    
+    <!-- Welcome Tour Overlay -->
+    <div id="tour-overlay" class="tour-overlay" style="display: none;" role="dialog" aria-labelledby="tour-title" aria-describedby="tour-description">
+        <div class="tour-content">
+            <h3 id="tour-title">Welcome to Finance Manager Pro!</h3>
+            <p id="tour-description">Let's take a quick tour of your new financial dashboard.</p>
+            <div class="tour-progress">
+                <div class="tour-progress-bar" id="tour-progress-bar"></div>
+                <span class="tour-step-counter" id="tour-step-counter">1 of 5</span>
+            </div>
+            <div class="tour-actions">
+                <button class="btn btn-outline" id="tour-skip">Skip Tour</button>
+                <button class="btn btn-secondary" id="tour-prev" style="display: none;">Previous</button>
+                <button class="btn btn-primary" id="tour-next">Next</button>
+                <button class="btn btn-primary" id="tour-finish" style="display: none;">Get Started</button>
+            </div>
+        </div>
+        <div class="tour-indicator" id="tour-indicator">
+            <div class="tour-arrow" id="tour-arrow"></div>
+        </div>
+    </div>
+    
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar" style="display: none;" role="navigation" aria-label="Main navigation">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Finance Manager Logo" class="nav-logo" />
+                <h2>Finance Manager Pro</h2>
+            </div>
+            
+            <div class="nav-menu" id="nav-menu" role="menubar">
+                <a href="#dashboard" class="nav-link active" data-page="dashboard" role="menuitem" aria-label="Go to Dashboard">
+                    <span class="nav-icon" aria-hidden="true">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="#transactions" class="nav-link" data-page="transactions" role="menuitem" aria-label="Go to Transactions">
+                    <span class="nav-icon" aria-hidden="true">💳</span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="#budgets" class="nav-link" data-page="budgets" role="menuitem" aria-label="Go to Budgets">
+                    <span class="nav-icon" aria-hidden="true">🎯</span>
+                    <span class="nav-text">Budgets</span>
+                </a>
+                <a href="#reports" class="nav-link" data-page="reports" role="menuitem" aria-label="Go to Reports">
+                    <span class="nav-icon" aria-hidden="true">📈</span>
+                    <span class="nav-text">Reports</span>
+                </a>
+                <a href="#settings" class="nav-link" data-page="settings" role="menuitem" aria-label="Go to Settings">
+                    <span class="nav-icon" aria-hidden="true">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="nav-search" id="nav-search">
+                <div class="search-container">
+                    <input type="text" id="global-search" placeholder="Search transactions..." aria-label="Search transactions" autocomplete="off" />
+                    <button class="search-btn" id="global-search-btn" aria-label="Search" type="button">
+                        <span class="nav-icon" aria-hidden="true">🔍</span>
+                    </button>
+                    <button class="search-clear" id="global-search-clear" style="display: none;" aria-label="Clear search">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="search-results" id="global-search-results" style="display: none;"></div>
+            </div>
+            
+            <!-- User Menu -->
+            <div class="nav-user" id="nav-user">
+                <button class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle theme" title="Toggle theme">
+                    <span class="theme-icon" id="theme-icon">🌙</span>
+                </button>
+                
+                <div class="user-dropdown">
+                    <button class="user-menu-btn" id="user-menu-btn" aria-label="User menu" aria-expanded="false">
+                        <span class="user-avatar" id="user-avatar">👤</span>
+                        <span class="user-name" id="user-name">User</span>
+                        <span class="dropdown-arrow" aria-hidden="true">▼</span>
+                    </button>
+                    <div class="user-dropdown-menu" id="user-dropdown-menu" style="display: none;">
+                        <a href="#profile" class="dropdown-item">
+                            <span class="dropdown-icon">👤</span>
+                            Profile
+                        </a>
+                        <a href="#settings" class="dropdown-item">
+                            <span class="dropdown-icon">⚙️</span>
+                            Settings
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#logout" class="dropdown-item" id="logout-btn">
+                            <span class="dropdown-icon">🚪</span>
+                            Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mobile Menu Toggle -->
+            <div class="nav-toggle" id="nav-toggle" role="button" aria-label="Toggle navigation menu" aria-expanded="false" tabindex="0">
+                <span class="toggle-line"></span>
+                <span class="toggle-line"></span>
+                <span class="toggle-line"></span>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Landing Page -->
+    <section class="page active" id="landing-page" role="main" aria-labelledby="landing-title">
+        <div class="landing-container">
+            <div class="landing-hero">
+                <div class="hero-content">
+                    <h1 id="landing-title" class="hero-title">
+                        Take Control of Your
+                        <span class="gradient-text">Financial Future</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        Advanced personal finance management with intelligent budgeting, 
+                        real-time analytics, and beautiful insights to help you make smarter money decisions.
+                    </p>
+                    <div class="hero-stats">
+                        <div class="stat-item">
+                            <div class="stat-number">10K+</div>
+                            <div class="stat-label">Active Users</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">$2M+</div>
+                            <div class="stat-label">Money Tracked</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">95%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="hero-cards">
+                        <div class="preview-card income">
+                            <div class="card-icon">💰</div>
+                            <div class="card-content">
+                                <div class="card-title">Monthly Income</div>
+                                <div class="card-amount">$5,240</div>
+                                <div class="card-change positive">+12%</div>
+                            </div>
+                        </div>
+                        <div class="preview-card expense">
+                            <div class="card-icon">📊</div>
+                            <div class="card-content">
+                                <div class="card-title">Expenses</div>
+                                <div class="card-amount">$3,180</div>
+                                <div class="card-change negative">-5%</div>
+                            </div>
+                        </div>
+                        <div class="preview-card savings">
+                            <div class="card-icon">🎯</div>
+                            <div class="card-content">
+                                <div class="card-title">Savings Goal</div>
+                                <div class="card-amount">$2,060</div>
+                                <div class="card-progress">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: 68%;"></div>
+                                    </div>
+                                    <span>68%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="landing-features">
+                <div class="features-header">
+                    <h2>Everything you need to manage your finances</h2>
+                    <p>Powerful features designed to give you complete control over your money</p>
+                </div>
+                
+                <div class="features-grid">
+                    <div class="feature-card" data-feature="tracking">
+                        <div class="feature-icon">📊</div>
+                        <h3>Smart Tracking</h3>
+                        <p>Automatically categorize and track all your income and expenses with intelligent insights.</p>
+                        <ul class="feature-list">
+                            <li>Auto-categorization</li>
+                            <li>Real-time sync</li>
+                            <li>Advanced filtering</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card" data-feature="budgeting">
+                        <div class="feature-icon">🎯</div>
+                        <h3>Budget Management</h3>
+                        <p>Set flexible budgets with visual alerts and performance tracking to stay on target.</p>
+                        <ul class="feature-list">
+                            <li>Visual progress bars</li>
+                            <li>Smart alerts</li>
+                            <li>Goal tracking</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card" data-feature="analytics">
+                        <div class="feature-icon">📈</div>
+                        <h3>Advanced Analytics</h3>
+                        <p>Beautiful charts and reports that reveal spending patterns and opportunities.</p>
+                        <ul class="feature-list">
+                            <li>Interactive charts</li>
+                            <li>Trend analysis</li>
+                            <li>Custom reports</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card" data-feature="security">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Bank-Level Security</h3>
+                        <p>Your financial data is protected with enterprise-grade security and encryption.</p>
+                        <ul class="feature-list">
+                            <li>256-bit encryption</li>
+                            <li>Secure authentication</li>
+                            <li>Privacy focused</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card" data-feature="mobile">
+                        <div class="feature-icon">📱</div>
+                        <h3>Mobile Optimized</h3>
+                        <p>Access your finances anywhere with our responsive design and mobile features.</p>
+                        <ul class="feature-list">
+                            <li>Touch-friendly interface</li>
+                            <li>Offline support</li>
+                            <li>Push notifications</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card" data-feature="export">
+                        <div class="feature-icon">📤</div>
+                        <h3>Data Export</h3>
+                        <p>Export your data in multiple formats for taxes, accounting, or personal records.</p>
+                        <ul class="feature-list">
+                            <li>CSV export</li>
+                            <li>PDF reports</li>
+                            <li>Custom date ranges</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="landing-cta">
+                <div class="cta-content">
+                    <h2>Ready to take control of your finances?</h2>
+                    <p>Join thousands of users who have transformed their financial lives with Finance Manager Pro.</p>
+                    <div class="cta-actions">
+                        <button class="btn btn-primary btn-large" id="get-started-btn">
+                            <span class="btn-icon">🚀</span> Get Started Free
+                        </button>
+                        <button class="btn btn-outline btn-large" id="login-link">
+                            <span class="btn-icon">👤</span> Sign In
+                        </button>
+                    </div>
+                    <p class="cta-note">
+                        <span class="checkmark">✓</span> No credit card required
+                        <span class="checkmark">✓</span> Free forever
+                        <span class="checkmark">✓</span> 2-minute setup
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+       <!-- Login Page -->
+    <section class="page" id="login-page" style="display: none;" role="main" aria-labelledby="login-title">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-logo">
+                        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Finance Manager Logo" />
+                    </div>
+                    <h2 id="login-title">Welcome Back</h2>
+                    <p>Sign in to your account to continue managing your finances</p>
+                </div>
+                
+                <form id="login-form" class="auth-form" novalidate>
+                    <div class="form-group">
+                        <label for="login-username" class="form-label required">Username</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon" aria-hidden="true">👤</span>
+                            <input type="text" 
+                                   id="login-username" 
+                                   name="username" 
+                                   class="form-input"
+                                   required 
+                                   aria-describedby="login-username-error"
+                                   autocomplete="username"
+                                   placeholder="Enter your username" />
+                        </div>
+                        <div id="login-username-error" class="form-error" aria-live="polite"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="login-password" class="form-label required">Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon" aria-hidden="true">🔒</span>
+                            <input type="password" 
+                                   id="login-password" 
+                                   name="password" 
+                                   class="form-input"
+                                   required
+                                   aria-describedby="login-password-error"
+                                   autocomplete="current-password"
+                                   placeholder="Enter your password" />
+                            <button type="button" class="password-toggle" id="login-password-toggle" aria-label="Toggle password visibility">
+                                <span class="toggle-icon">👁️</span>
+                            </button>
+                        </div>
+                        <div id="login-password-error" class="form-error" aria-live="polite"></div>
+                    </div>
+                    
+                    <div class="form-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="remember-me" name="remember" />
+                            <span class="checkbox-custom"></span>
+                            Remember me
+                        </label>
+                        <a href="#forgot-password" class="form-link">Forgot password?</a>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-full" id="login-submit-btn">
+                        <span class="btn-text">Sign In</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                    
+                    <div class="auth-divider">
+                        <span>or</span>
+                    </div>
+                    
+                    <div class="auth-links">
+                        <p>Don't have an account? 
+                            <a href="#register" id="register-link" class="auth-link">Create one now</a>
+                        </p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Registration Page -->
+    <section class="page" id="register-page" style="display: none;" role="main" aria-labelledby="register-title">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-logo">
+                        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Finance Manager Logo" />
+                    </div>
+                    <h2 id="register-title">Create Your Account</h2>
+                    <p>Start your journey to better financial management</p>
+                </div>
+                
+                <form id="register-form" class="auth-form" novalidate>
+                    <div class="form-group">
+                        <label for="register-username" class="form-label required">Username</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon" aria-hidden="true">👤</span>
+                            <input type="text" 
+                                   id="register-username" 
+                                   name="username" 
+                                   class="form-input"
+                                   required 
+                                   minlength="3"
+                                   maxlength="50"
+                                   pattern="[a-zA-Z0-9_-]+"
+                                   aria-describedby="register-username-error register-username-help"
+                                   autocomplete="username"
+                                   placeholder="Choose a username" />
+                        </div>
+                        <div id="register-username-help" class="form-help">3-50 characters, letters, numbers, - and _ only</div>
+                        <div id="register-username-error" class="form-error" aria-live="polite"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="register-email" class="form-label required">Email Address</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon" aria-hidden="true">📧</span>
+                            <input type="email" 
+                                   id="register-email" 
+                                   name="email" 
+                                   class="form-input"
+                                   required
+                                   aria-describedby="register-email-error"
+                                   autocomplete="email"
+                                   placeholder="Enter your email address" />
+                        </div>
+                        <div id="register-email-error" class="form-error" aria-live="polite"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="register-password" class="form-label required">Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon" aria-hidden="true">🔒</span>
+                            <input type="password" 
+                                   id="register-password" 
+                                   name="password" 
+                                   class="form-input"
+                                   required 
+                                   minlength="8"
+                                   aria-describedby="register-password-error register-password-help"
+                                   autocomplete="new-password"
+                                   placeholder="Create a strong password" />
+                            <button type="button" class="password-toggle" id="register-password-toggle" aria-label="Toggle password visibility">
+                                <span class="toggle-icon">👁️</span>
+                            </button>
+                        </div>
+                        <div id="register-password-help" class="form-help">Minimum 8 characters with letters and numbers</div>
+                        <div class="password-strength" id="password-strength" style="display: none;">
+                            <div class="strength-bar">
+                                <div class="strength-fill" id="strength-fill"></div>
+                            </div>
+                            <span class="strength-text" id="strength-text">Weak</span>
+                        </div>
+                        <div id="register-password-error" class="form-error" aria-live="polite"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="terms-agreement" name="terms" required />
+                            <span class="checkbox-custom"></span>
+                            I agree to the <a href="#terms" class="form-link">Terms of Service</a> and 
+                            <a href="#privacy" class="form-link">Privacy Policy</a>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-full" id="register-submit-btn">
+                        <span class="btn-text">Create Account</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                    
+                    <div class="auth-divider">
+                        <span>or</span>
+                    </div>
+                    
+                    <div class="auth-links">
+                        <p>Already have an account? 
+                            <a href="#login" id="login-link-from-register" class="auth-link">Sign in here</a>
+                        </p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dashboard Page -->
+    <section class="page" id="dashboard-page" style="display: none;" role="main" aria-labelledby="dashboard-title">
+        <main id="main-content" class="container">
+            <!-- Page Header -->
+            <div class="page-header" data-tour-step="1">
+                <div class="header-content">
+                    <h1 id="dashboard-title">Dashboard</h1>
+                    <p id="dashboard-subtitle" class="page-subtitle">Your financial overview at a glance</p>
+                </div>
+                <div class="header-controls">
+                    <div class="date-range-selector">
+                        <label for="dashboard-period" class="sr-only">Select time period</label>
+                        <select id="dashboard-period" class="period-select" aria-label="Select time period">
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_year">This Year</option>
+                            <option value="last_year">Last Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                    <div class="custom-date-range" id="custom-date-range" style="display: none;">
+                        <input type="date" id="dashboard-start-date" class="date-input" aria-label="Start date" />
+                        <input type="date" id="dashboard-end-date" class="date-input" aria-label="End date" />
+                        <button class="btn btn-secondary btn-sm" id="apply-custom-range">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Financial Summary Cards -->
+            <section class="stats-section" role="region" aria-labelledby="stats-heading" data-tour-step="2">
+                <h2 id="stats-heading" class="sr-only">Financial Summary</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card income-card" role="img" aria-labelledby="income-label">
+                        <div class="stat-header">
+                            <div class="stat-icon" aria-hidden="true">💰</div>
+                            <div class="stat-meta">
+                                <h3 id="income-label" class="stat-title">Total Income</h3>
+                                <div class="stat-period" id="income-period">This Month</div>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="total-income" data-count-to="0">$0.00</div>
+                            <div class="stat-change" id="income-change">
+                                <span class="change-icon" aria-hidden="true">↗</span>
+                                <span class="change-text">+0% from last period</span>
+                            </div>
+                        </div>
+                        <div class="stat-footer">
+                            <canvas id="income-sparkline" class="sparkline" width="120" height="30"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card expense-card" role="img" aria-labelledby="expense-label">
+                        <div class="stat-header">
+                            <div class="stat-icon" aria-hidden="true">💸</div>
+                            <div class="stat-meta">
+                                <h3 id="expense-label" class="stat-title">Total Expenses</h3>
+                                <div class="stat-period" id="expense-period">This Month</div>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="total-expense" data-count-to="0">$0.00</div>
+                            <div class="stat-change" id="expense-change">
+                                <span class="change-icon" aria-hidden="true">↘</span>
+                                <span class="change-text">-0% from last period</span>
+                            </div>
+                        </div>
+                        <div class="stat-footer">
+                            <canvas id="expense-sparkline" class="sparkline" width="120" height="30"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card balance-card" role="img" aria-labelledby="balance-label">
+                        <div class="stat-header">
+                            <div class="stat-icon" aria-hidden="true">📊</div>
+                            <div class="stat-meta">
+                                <h3 id="balance-label" class="stat-title">Net Balance</h3>
+                                <div class="stat-period" id="balance-period">This Month</div>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="net-balance" data-count-to="0">$0.00</div>
+                            <div class="stat-change" id="balance-change">
+                                <span class="change-icon" aria-hidden="true">↗</span>
+                                <span class="change-text">+0% from last period</span>
+                            </div>
+                        </div>
+                        <div class="stat-footer">
+                            <div class="savings-info">
+                                <span class="savings-label">Savings Rate:</span>
+                                <span class="savings-rate" id="savings-rate">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card insights-card" role="img" aria-labelledby="insights-label">
+                        <div class="stat-header">
+                            <div class="stat-icon" aria-hidden="true">🎯</div>
+                            <div class="stat-meta">
+                                <h3 id="insights-label" class="stat-title">Daily Average</h3>
+                                <div class="stat-period">Spending</div>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="avg-daily-spending" data-count-to="0">$0.00</div>
+                            <div class="insight-details">
+                                <div class="insight-item">
+                                    <span class="insight-label">Largest:</span>
+                                    <span class="insight-value" id="largest-transaction">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Actions -->
+            <section class="quick-actions-section" data-tour-step="3">
+                <div class="section-header">
+                    <h2>Quick Actions</h2>
+                    <p>Add transactions and manage your finances quickly</p>
+                </div>
+                <div class="quick-actions-grid">
+                    <button class="quick-action-btn income-action" id="quick-add-income" data-action="income">
+                        <div class="action-icon">💰</div>
+                        <div class="action-content">
+                            <div class="action-title">Add Income</div>
+                            <div class="action-subtitle">Record earnings</div>
+                        </div>
+                        <div class="action-arrow">→</div>
+                    </button>
+                    
+                    <button class="quick-action-btn expense-action" id="quick-add-expense" data-action="expense">
+                        <div class="action-icon">💸</div>
+                        <div class="action-content">
+                            <div class="action-title">Add Expense</div>
+                            <div class="action-subtitle">Track spending</div>
+                        </div>
+                        <div class="action-arrow">→</div>
+                    </button>
+                    
+                    <button class="quick-action-btn budget-action" id="quick-set-budget" data-action="budget">
+                        <div class="action-icon">🎯</div>
+                        <div class="action-content">
+                            <div class="action-title">Set Budget</div>
+                            <div class="action-subtitle">Create spending limits</div>
+                        </div>
+                        <div class="action-arrow">→</div>
+                    </button>
+                    
+                    <button class="quick-action-btn export-action" id="quick-export" data-action="export">
+                        <div class="action-icon">📊</div>
+                        <div class="action-content">
+                            <div class="action-title">Export Data</div>
+                            <div class="action-subtitle">Download reports</div>
+                        </div>
+                        <div class="action-arrow">→</div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Dashboard Widgets -->
+            <div class="dashboard-widgets">
+                <!-- Charts Row -->
+                <div class="widget-row">
+                    <div class="widget chart-widget" data-tour-step="4">
+                        <div class="widget-header">
+                            <h3>Monthly Trends</h3>
+                            <div class="widget-controls">
+                                <button class="btn btn-sm btn-ghost" id="chart-refresh" aria-label="Refresh chart" title="Refresh chart">
+                                    <span aria-hidden="true">🔄</span>
+                                </button>
+                                <button class="btn btn-sm btn-ghost" id="chart-fullscreen" aria-label="Fullscreen chart" title="Fullscreen">
+                                    <span aria-hidden="true">⛶</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="widget-content">
+                            <canvas id="monthly-trends-chart" 
+                                    role="img" 
+                                    aria-label="Monthly income and expense trends chart"
+                                    width="400" 
+                                    height="250"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="widget chart-widget">
+                        <div class="widget-header">
+                            <h3>Expense Breakdown</h3>
+                            <div class="widget-controls">
+                                <select id="breakdown-period" class="period-select-sm">
+                                    <option value="this_month">This Month</option>
+                                    <option value="last_month">Last Month</option>
+                                    <option value="this_year">This Year</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="widget-content">
+                            <canvas id="expense-breakdown-chart" 
+                                    role="img" 
+                                    aria-label="Expense breakdown by category pie chart"
+                                    width="400" 
+                                    height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Widgets Row -->
+                <div class="widget-row">
+                    <div class="widget data-widget" data-tour-step="5">
+                        <div class="widget-header">
+                            <h3>Recent Transactions</h3>
+                            <a href="#transactions" class="btn btn-sm btn-outline" data-page="transactions">View All</a>
+                        </div>
+                        <div class="widget-content">
+                            <div id="recent-transactions-list" class="transactions-list">
+                                <div class="loading-placeholder">
+                                    <div class="skeleton-item"></div>
+                                    <div class="skeleton-item"></div>
+                                    <div class="skeleton-item"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="widget data-widget">
+                        <div class="widget-header">
+                            <h3>Top Categories</h3>
+                            <div class="widget-subtitle">This month's spending</div>
+                        </div>
+                        <div class="widget-content">
+                            <div id="top-categories-list" class="categories-list">
+                                <div class="loading-placeholder">
+                                    <div class="skeleton-item"></div>
+                                    <div class="skeleton-item"></div>
+                                    <div class="skeleton-item"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Onboarding Checklist -->
+            <div class="onboarding-checklist" id="onboarding-checklist" style="display: none;">
+                <div class="checklist-header">
+                    <div class="checklist-title">
+                        <span class="checklist-icon">🎯</span>
+                        <h3>Getting Started Checklist</h3>
+                    </div>
+                    <button class="checklist-close" id="checklist-close" aria-label="Close checklist">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="checklist-content">
+                    <div class="checklist-items">
+                        <div class="checklist-item" data-step="tour_completed">
+                            <label class="checklist-label">
+                                <input type="checkbox" id="check-tour" class="checklist-checkbox" />
+                                <span class="checkbox-custom"></span>
+                                <span class="checklist-text">Complete the welcome tour</span>
+                            </label>
+                        </div>
+                        <div class="checklist-item" data-step="first_transaction_added">
+                            <label class="checklist-label">
+                                <input type="checkbox" id="check-transaction" class="checklist-checkbox" />
+                                <span class="checkbox-custom"></span>
+                                <span class="checklist-text">Add your first transaction</span>
+                            </label>
+                        </div>
+                        <div class="checklist-item" data-step="first_budget_set">
+                            <label class="checklist-label">
+                                <input type="checkbox" id="check-budget" class="checklist-checkbox" />
+                                <span class="checkbox-custom"></span>
+                                <span class="checklist-text">Set up your first budget</span>
+                            </label>
+                        </div>
+                        <div class="checklist-item" data-step="export_used">
+                            <label class="checklist-label">
+                                <input type="checkbox" id="check-export" class="checklist-checkbox" />
+                                <span class="checkbox-custom"></span>
+                                <span class="checklist-text">Export your data</span>
+                            </label>
+                        </div>
+                        <div class="checklist-item" data-step="sample_data_added">
+                            <label class="checklist-label">
+                                <input type="checkbox" id="check-sample" class="checklist-checkbox" />
+                                <span class="checkbox-custom"></span>
+                                <span class="checklist-text">
+                                    <button class="btn btn-link btn-sm" id="add-sample-data">Add sample data</button>
+                                    to explore features
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checklist-progress">
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="checklist-progress" style="width: 0%;"></div>
+                            </div>
+                            <span class="progress-text" id="checklist-text">0 of 5 completed</span>
+                        </div>
+                        <div class="completion-reward" id="completion-reward" style="display: none;">
+                            <span class="reward-icon">🎉</span>
+                            <span class="reward-text">Great job! You're all set up!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </section>
+
+    <!-- Transactions Page -->
+    <section class="page" id="transactions-page" style="display: none;" role="main" aria-labelledby="transactions-title">
+        <div class="container">
+            <div class="page-header">
+                <div class="header-content">
+                    <h1 id="transactions-title">Transactions</h1>
+                    <p class="page-subtitle">Manage and track your financial transactions</p>
+                </div>
+                <div class="header-controls">
+                    <button class="btn btn-primary" id="add-transaction-btn">
+                        <span class="btn-icon">➕</span>
+                        Add Transaction
+                    </button>
+                    <button class="btn btn-outline" id="export-transactions-btn">
+                        <span class="btn-icon">📊</span>
+                        Export
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Filters -->
+            <div class="filters-section">
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label for="transaction-type-filter" class="filter-label">Type</label>
+                        <select id="transaction-type-filter" class="filter-select">
+                            <option value="all">All Types</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="transaction-category-filter" class="filter-label">Category</label>
+                        <select id="transaction-category-filter" class="filter-select">
+                            <option value="all">All Categories</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="transaction-start-date" class="filter-label">Start Date</label>
+                        <input type="date" id="transaction-start-date" class="filter-input" />
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="transaction-end-date" class="filter-label">End Date</label>
+                        <input type="date" id="transaction-end-date" class="filter-input" />
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="transaction-sort" class="filter-label">Sort By</label>
+                        <select id="transaction-sort" class="filter-select">
+                            <option value="date_desc">Date (Newest)</option>
+                            <option value="date_asc">Date (Oldest)</option>
+                            <option value="amount_desc">Amount (High to Low)</option>
+                            <option value="amount_asc">Amount (Low to High)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-actions">
+                        <button class="btn btn-secondary btn-sm" id="apply-filters">Apply</button>
+                        <button class="btn btn-ghost btn-sm" id="clear-filters">Clear</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Transactions List -->
+            <div class="transactions-section">
+                <div class="transactions-header">
+                    <div class="transactions-summary">
+                        <span class="summary-item">
+                            <span class="summary-label">Total:</span>
+                            <span class="summary-value" id="transactions-total">0 transactions</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-label">Income:</span>
+                            <span class="summary-value income" id="transactions-income">$0.00</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-label">Expenses:</span>
+                            <span class="summary-value expense" id="transactions-expense">$0.00</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-label">Net:</span>
+                            <span class="summary-value" id="transactions-net">$0.00</span>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="transactions-table-container">
+                    <table class="transactions-table" id="transactions-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Category</th>
+                                <th scope="col">Description</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col" class="actions-col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-tbody">
+                            <!-- Transactions will be populated here -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="table-loading" id="transactions-loading" style="display: none;">
+                        <div class="loading-spinner">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-empty" id="transactions-empty" style="display: none;">
+                        <div class="empty-state">
+                            <div class="empty-icon">💳</div>
+                            <h3>No transactions found</h3>
+                            <p>Start by adding your first transaction or adjust your filters</p>
+                            <button class="btn btn-primary" id="add-first-transaction">
+                                <span class="btn-icon">➕</span>
+                                Add Transaction
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                <div class="pagination-container" id="transactions-pagination" style="display: none;">
+                    <div class="pagination-info">
+                        <span id="pagination-info-text">Showing 1-20 of 100 transactions</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <button class="btn btn-ghost btn-sm" id="pagination-prev" disabled>Previous</button>
+                        <span class="pagination-pages" id="pagination-pages"></span>
+                        <button class="btn btn-ghost btn-sm" id="pagination-next">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Budgets Page -->
+    <section class="page" id="budgets-page" style="display: none;" role="main" aria-labelledby="budgets-title">
+        <div class="container">
+            <div class="page-header">
+                <div class="header-content">
+                    <h1 id="budgets-title">Budget Management</h1>
+                    <p class="page-subtitle">Set spending limits and track your budget performance</p>
+                </div>
+                <div class="header-controls">
+                    <button class="btn btn-primary" id="create-budget-btn">
+                        <span class="btn-icon">🎯</span>
+                        Create Budget
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Budget Overview -->
+            <div class="budget-overview">
+                <div class="overview-cards">
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Total Budgets</h3>
+                            <span class="card-icon">📊</span>
+                        </div>
+                        <div class="card-content">
+                            <div class="card-value" id="total-budgets">0</div>
+                            <div class="card-subtitle">Active budgets</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Total Budget Amount</h3>
+                            <span class="card-icon">💰</span>
+                        </div>
+                        <div class="card-content">
+                            <div class="card-value" id="total-budget-amount">$0.00</div>
+                            <div class="card-subtitle">This month</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Total Spent</h3>
+                            <span class="card-icon">💸</span>
+                        </div>
+                        <div class="card-content">
+                            <div class="card-value" id="total-spent">$0.00</div>
+                            <div class="card-subtitle">This month</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Remaining Budget</h3>
+                            <span class="card-icon">🎯</span>
+                        </div>
+                        <div class="card-content">
+                            <div class="card-value" id="remaining-budget">$0.00</div>
+                            <div class="card-subtitle">Available to spend</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Budget List -->
+            <div class="budgets-section">
+                <div class="section-header">
+                    <h2>Your Budgets</h2>
+                    <div class="section-controls">
+                        <select id="budget-period-filter" class="period-select">
+                            <option value="monthly">Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="budgets-grid" id="budgets-grid">
+                    <!-- Budget cards will be populated here -->
+                </div>
+                
+                <div class="budgets-empty" id="budgets-empty" style="display: none;">
+                    <div class="empty-state">
+                        <div class="empty-icon">🎯</div>
+                        <h3>No budgets created yet</h3>
+                        <p>Create your first budget to start tracking your spending limits</p>
+                        <button class="btn btn-primary" id="create-first-budget">
+                            <span class="btn-icon">🎯</span>
+                            Create Budget
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reports Page -->
+    <section class="page" id="reports-page" style="display: none;" role="main" aria-labelledby="reports-title">
+        <div class="container">
+            <div class="page-header">
+                <div class="header-content">
+                    <h1 id="reports-title">Financial Reports</h1>
+                    <p class="page-subtitle">Analyze your financial data with detailed reports and insights</p>
+                </div>
+                <div class="header-controls">
+                    <div class="date-range-selector">
+                        <select id="reports-period" class="period-select">
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_year">This Year</option>
+                            <option value="last_year">Last Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-outline" id="export-report-btn">
+                        <span class="btn-icon">📊</span>
+                        Export Report
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Financial Insights -->
+            <div class="insights-section">
+                <div class="insights-grid">
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3>Income vs Expenses</h3>
+                            <span class="insight-icon">📈</span>
+                        </div>
+                        <div class="insight-content">
+                            <div class="comparison-chart">
+                                <div class="comparison-item income">
+                                    <div class="comparison-label">Income</div>
+                                    <div class="comparison-bar">
+                                        <div class="bar-fill income-fill" style="width: 0%;"></div>
+                                    </div>
+                                    <div class="comparison-value" id="insight-income">$0.00</div>
+                                </div>
+                                <div class="comparison-item expense">
+                                    <div class="comparison-label">Expenses</div>
+                                    <div class="comparison-bar">
+                                        <div class="bar-fill expense-fill" style="width: 0%;"></div>
+                                    </div>
+                                    <div class="comparison-value" id="insight-expense">$0.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3>Savings Rate</h3>
+                            <span class="insight-icon">🎯</span>
+                        </div>
+                        <div class="insight-content">
+                            <div class="savings-display">
+                                <div class="savings-rate-circle">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path class="circle" id="savings-rate-path"
+                                              stroke-dasharray="0, 100"
+                                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" class="percentage" id="savings-rate-text">0%</text>
+                                    </svg>
+                                </div>
+                                <div class="savings-details">
+                                    <div class="savings-item">
+                                        <span class="savings-label">Saved:</span>
+                                        <span class="savings-value" id="total-saved">$0.00</span>
+                                    </div>
+                                    <div class="savings-item">
+                                        <span class="savings-label">Goal:</span>
+                                        <span class="savings-value">20%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3>Top Spending Category</h3>
+                            <span class="insight-icon">🏆</span>
+                        </div>
+                        <div class="insight-content">
+                            <div class="top-category" id="top-spending-category">
+                                <div class="category-icon">💸</div>
+                                <div class="category-info">
+                                    <div class="category-name">No data</div>
+                                    <div class="category-amount">$0.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3>Spending Trend</h3>
+                            <span class="insight-icon">📊</span>
+                        </div>
+                        <div class="insight-content">
+                            <div class="trend-display" id="spending-trend">
+                                <div class="trend-icon">📈</div>
+                                <div class="trend-info">
+                                    <div class="trend-direction">Stable</div>
+                                    <div class="trend-percentage">0%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="charts-grid">
+                    <div class="chart-widget">
+                        <div class="widget-header">
+                            <h3>Monthly Trends</h3>
+                            <div class="widget-controls">
+                                <select id="trend-chart-period" class="period-select-sm">
+                                    <option value="6">Last 6 Months</option>
+                                    <option value="12">Last 12 Months</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="widget-content">
+                            <canvas id="reports-trends-chart" 
+                                    role="img" 
+                                    aria-label="Monthly income and expense trends"
+                                    width="600" 
+                                    height="300"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-widget">
+                        <div class="widget-header">
+                            <h3>Category Breakdown</h3>
+                            <div class="widget-controls">
+                                <select id="category-chart-type" class="period-select-sm">
+                                    <option value="expense">Expenses</option>
+                                    <option value="income">Income</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="widget-content">
+                            <div class="chart-container">
+                                <canvas id="reports-category-chart" 
+                                        role="img" 
+                                        aria-label="Category breakdown chart"
+                                        width="400" 
+                                        height="300"></canvas>
+                                <div class="category-legend" id="category-legend">
+                                    <!-- Legend will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detailed Analysis -->
+            <div class="analysis-section">
+                <div class="section-header">
+                    <h2>Detailed Analysis</h2>
+                </div>
+                
+                <div class="analysis-tabs">
+                    <button class="tab-btn active" data-tab="spending">Spending Analysis</button>
+                    <button class="tab-btn" data-tab="income">Income Analysis</button>
+                    <button class="tab-btn" data-tab="comparison">Period Comparison</button>
+                </div>
+                
+                <div class="tab-content active" id="spending-tab">
+                    <div class="analysis-grid">
+                        <div class="analysis-card">
+                            <h4>Average Daily Spending</h4>
+                            <div class="analysis-value" id="avg-daily-spending-report">$0.00</div>
+                            <div class="analysis-change" id="daily-spending-change">No change from last period</div>
+                        </div>
+                        
+                        <div class="analysis-card">
+                            <h4>Largest Single Expense</h4>
+                            <div class="analysis-value" id="largest-expense">$0.00</div>
+                            <div class="analysis-detail" id="largest-expense-detail">No transactions</div>
+                        </div>
+                        
+                        <div class="analysis-card">
+                            <h4>Most Active Day</h4>
+                            <div class="analysis-value" id="most-active-day">-</div>
+                            <div class="analysis-detail" id="active-day-detail">0 transactions</div>
+                        </div>
+                    </div>
+                    
+                    <div class="category-analysis">
+                        <h4>Spending by Category</h4>
+                        <div class="category-breakdown-list" id="spending-breakdown">
+                            <!-- Category breakdown will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="income-tab" style="display: none;">
+                    <div class="analysis-grid">
+                        <div class="analysis-card">
+                            <h4>Total Income</h4>
+                            <div class="analysis-value" id="total-income-report">$0.00</div>
+                            <div class="analysis-change" id="income-change-report">No change from last period</div>
+                        </div>
+                        
+                        <div class="analysis-card">
+                            <h4>Primary Income Source</h4>
+                            <div class="analysis-value" id="primary-income-source">-</div>
+                            <div class="analysis-detail" id="primary-source-amount">$0.00</div>
+                        </div>
+                        
+                        <div class="analysis-card">
+                            <h4>Income Consistency</h4>
+                            <div class="analysis-value" id="income-consistency">Stable</div>
+                            <div class="analysis-detail" id="consistency-detail">Regular income pattern</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="comparison-tab" style="display: none;">
+                    <div class="comparison-section">
+                        <h4>Period Comparison</h4>
+                        <div class="comparison-grid">
+                            <div class="comparison-card">
+                                <h5>Current Period</h5>
+                                <div class="period-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Income:</span>
+                                        <span class="stat-value income" id="current-income">$0.00</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Expenses:</span>
+                                        <span class="stat-value expense" id="current-expenses">$0.00</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Balance:</span>
+                                        <span class="stat-value" id="current-balance">$0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="comparison-arrow">
+                                <span>vs</span>
+                            </div>
+                            
+                            <div class="comparison-card">
+                                <h5>Previous Period</h5>
+                                <div class="period-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Income:</span>
+                                        <span class="stat-value income" id="previous-income">$0.00</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Expenses:</span>
+                                        <span class="stat-value expense" id="previous-expenses">$0.00</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Balance:</span>
+                                        <span class="stat-value" id="previous-balance">$0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="comparison-summary">
+                            <div class="summary-item">
+                                <span class="summary-label">Income Change:</span>
+                                <span class="summary-value" id="income-change-percent">0%</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Expense Change:</span>
+                                <span class="summary-value" id="expense-change-percent">0%</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Balance Change:</span>
+                                <span class="summary-value" id="balance-change-percent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Settings Page -->
+    <section class="page" id="settings-page" style="display: none;" role="main" aria-labelledby="settings-title">
+        <div class="container">
+            <div class="page-header">
+                <div class="header-content">
+                    <h1 id="settings-title">Settings</h1>
+                    <p class="page-subtitle">Customize your experience and manage your account</p>
+                </div>
+            </div>
+            
+            <div class="settings-container">
+                <div class="settings-sidebar">
+                    <nav class="settings-nav">
+                        <button class="settings-nav-item active" data-setting="profile">
+                            <span class="nav-icon">👤</span>
+                            Profile
+                        </button>
+                        <button class="settings-nav-item" data-setting="preferences">
+                            <span class="nav-icon">⚙️</span>
+                            Preferences
+                        </button>
+                        <button class="settings-nav-item" data-setting="security">
+                            <span class="nav-icon">🔒</span>
+                            Security
+                        </button>
+                        <button class="settings-nav-item" data-setting="data">
+                            <span class="nav-icon">📊</span>
+                            Data & Privacy
+                        </button>
+                        <button class="settings-nav-item" data-setting="notifications">
+                            <span class="nav-icon">🔔</span>
+                            Notifications
+                        </button>
+                    </nav>
+                </div>
+                
+                <div class="settings-content">
+                    <!-- Profile Settings -->
+                    <div class="settings-section active" id="profile-settings">
+                        <div class="section-header">
+                            <h2>Profile Information</h2>
+                            <p>Manage your account details and personal information</p>
+                        </div>
+                        
+                        <form class="settings-form" id="profile-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profile-username" class="form-label">Username</label>
+                                    <input type="text" id="profile-username" class="form-input" readonly />
+                                    <div class="form-help">Username cannot be changed</div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="profile-email" class="form-label">Email Address</label>
+                                    <input type="email" id="profile-email" class="form-input" />
+                                    <div class="form-help">Used for account recovery and notifications</div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profile-first-name" class="form-label">First Name</label>
+                                    <input type="text" id="profile-first-name" class="form-input" placeholder="Optional" />
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="profile-last-name" class="form-label">Last Name</label>
+                                    <input type="text" id="profile-last-name" class="form-input" placeholder="Optional" />
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                                <button type="button" class="btn btn-secondary" id="cancel-profile">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Preferences Settings -->
+                    <div class="settings-section" id="preferences-settings" style="display: none;">
+                        <div class="section-header">
+                            <h2>Preferences</h2>
+                            <p>Customize how the application looks and behaves</p>
+                        </div>
+                        
+                        <form class="settings-form" id="preferences-form">
+                            <div class="preference-group">
+                                <h3>Appearance</h3>
+                                
+                                <div class="form-group">
+                                    <label for="theme-select" class="form-label">Theme</label>
+                                    <select id="theme-select" class="form-select">
+                                        <option value="auto">Auto (System)</option>
+                                        <option value="light">Light</option>
+                                        <option value="dark">Dark</option>
+                                    </select>
+                                    <div class="form-help">Choose your preferred color theme</div>
+                                </div>
+                            </div>
+                            
+                            <div class="preference-group">
+                                <h3>Regional Settings</h3>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="currency-select" class="form-label">Currency</label>
+                                        <select id="currency-select" class="form-select">
+                                            <option value="USD">USD ($)</option>
+                                            <option value="EUR">EUR (€)</option>
+                                            <option value="GBP">GBP (£)</option>
+                                            <option value="JPY">JPY (¥)</option>
+                                            <option value="CAD">CAD (C$)</option>
+                                            <option value="AUD">AUD (A$)</option>
+                                            <option value="INR">INR (₹)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="date-format-select" class="form-label">Date Format</label>
+                                        <select id="date-format-select" class="form-select">
+                                            <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                                            <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                                            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="preference-group">
+                                <h3>Default Views</h3>
+                                
+                                <div class="form-group">
+                                    <label for="default-transaction-view" class="form-label">Default Transaction View</label>
+                                    <select id="default-transaction-view" class="form-select">
+                                        <option value="all">All Transactions</option>
+                                        <option value="income">Income Only</option>
+                                        <option value="expense">Expenses Only</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="transactions-per-page" class="form-label">Transactions Per Page</label>
+                                    <select id="transactions-per-page" class="form-select">
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Preferences</button>
+                                <button type="button" class="btn btn-secondary" id="reset-preferences">Reset to Default</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Security Settings -->
+                    <div class="settings-section" id="security-settings" style="display: none;">
+                        <div class="section-header">
+                            <h2>Security</h2>
+                            <p>Manage your password and account security</p>
+                        </div>
+                        
+                        <div class="security-section">
+                            <h3>Change Password</h3>
+                            <form class="settings-form" id="password-form">
+                                <div class="form-group">
+                                    <label for="current-password" class="form-label">Current Password</label>
+                                    <div class="input-wrapper">
+                                        <input type="password" id="current-password" class="form-input" required />
+                                        <button type="button" class="password-toggle" data-target="current-password">
+                                            <span class="toggle-icon">👁️</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="new-password" class="form-label">New Password</label>
+                                    <div class="input-wrapper">
+                                        <input type="password" id="new-password" class="form-input" required minlength="8" />
+                                        <button type="button" class="password-toggle" data-target="new-password">
+                                            <span class="toggle-icon">👁️</span>
+                                        </button>
+                                    </div>
+                                    <div class="password-strength" id="new-password-strength" style="display: none;">
+                                        <div class="strength-bar">
+                                            <div class="strength-fill"></div>
+                                        </div>
+                                        <span class="strength-text">Weak</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="confirm-password" class="form-label">Confirm New Password</label>
+                                    <div class="input-wrapper">
+                                        <input type="password" id="confirm-password" class="form-input" required />
+                                        <button type="button" class="password-toggle" data-target="confirm-password">
+                                            <span class="toggle-icon">👁️</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">Change Password</button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <div class="security-section">
+                            <h3>Account Activity</h3>
+                            <div class="activity-info">
+                                <div class="info-item">
+                                    <span class="info-label">Last Login:</span>
+                                    <span class="info-value" id="last-login">Loading...</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Account Created:</span>
+                                    <span class="info-value" id="account-created">Loading...</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Login Sessions:</span>
+                                    <span class="info-value">1 active session</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Data & Privacy Settings -->
+                    <div class="settings-section" id="data-settings" style="display: none;">
+                        <div class="section-header">
+                            <h2>Data & Privacy</h2>
+                            <p>Manage your data and privacy settings</p>
+                        </div>
+                        
+                        <div class="data-section">
+                            <h3>Data Export</h3>
+                            <p>Download all your financial data in various formats</p>
+                            
+                            <div class="export-options">
+                                <div class="export-option">
+                                    <div class="option-info">
+                                        <h4>All Transactions</h4>
+                                        <p>Export all your transaction data as CSV file</p>
+                                    </div>
+                                    <button class="btn btn-outline" id="export-all-transactions">
+                                        <span class="btn-icon">📊</span>
+                                        Export CSV
+                                    </button>
+                                </div>
+                                
+                                <div class="export-option">
+                                    <div class="option-info">
+                                        <h4>Budget Data</h4>
+                                        <p>Export your budget settings and performance data</p>
+                                    </div>
+                                    <button class="btn btn-outline" id="export-budget-data">
+                                        <span class="btn-icon">🎯</span>
+                                        Export CSV
+                                    </button>
+                                </div>
+                                
+                                <div class="export-option">
+                                    <div class="option-info">
+                                        <h4>Complete Backup</h4>
+                                        <p>Download a complete backup of all your data</p>
+                                    </div>
+                                    <button class="btn btn-outline" id="export-complete-backup">
+                                        <span class="btn-icon">💾</span>
+                                        Export JSON
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="data-section">
+                            <h3>Data Management</h3>
+                            
+                            <div class="management-options">
+                                <div class="management-option">
+                                    <div class="option-info">
+                                        <h4>Clear All Data</h4>
+                                        <p>Permanently delete all your financial data. This action cannot be undone.</p>
+                                    </div>
+                                    <button class="btn btn-danger" id="clear-all-data">
+                                        <span class="btn-icon">🗑️</span>
+                                        Clear Data
+                                    </button>
+                                </div>
+                                
+                                <div class="management-option">
+                                    <div class="option-info">
+                                        <h4>Delete Account</h4>
+                                        <p>Permanently delete your account and all associated data.</p>
+                                    </div>
+                                    <button class="btn btn-danger" id="delete-account">
+                                        <span class="btn-icon">❌</span>
+                                        Delete Account
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notifications Settings -->
+                    <div class="settings-section" id="notifications-settings" style="display: none;">
+                        <div class="section-header">
+                            <h2>Notifications</h2>
+                            <p>Control when and how you receive notifications</p>
+                        </div>
+                        
+                        <form class="settings-form" id="notifications-form">
+                            <div class="notification-group">
+                                <h3>Budget Alerts</h3>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="budget-warnings" name="budget_warnings" checked />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Budget Warnings</div>
+                                            <div class="checkbox-description">Get notified when you're approaching your budget limit</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="budget-exceeded" name="budget_exceeded" checked />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Budget Exceeded</div>
+                                            <div class="checkbox-description">Get notified when you exceed your budget</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="notification-group">
+                                <h3>Transaction Reminders</h3>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="daily-summary" name="daily_summary" />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Daily Summary</div>
+                                            <div class="checkbox-description">Receive a daily summary of your transactions</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="weekly-report" name="weekly_report" checked />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Weekly Report</div>
+                                            <div class="checkbox-description">Get a weekly financial report</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="notification-group">
+                                <h3>System Notifications</h3>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="security-alerts" name="security_alerts" checked />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Security Alerts</div>
+                                            <div class="checkbox-description">Get notified about important security events</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="feature-updates" name="feature_updates" />
+                                        <span class="checkbox-custom"></span>
+                                        <div class="checkbox-content">
+                                            <div class="checkbox-title">Feature Updates</div>
+                                            <div class="checkbox-description">Be informed about new features and improvements</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Notification Settings</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modals and Overlays -->
+    <div class="modal-overlay" id="modal-overlay" style="display: none;"></div>
+    
+    <!-- Add Transaction Modal -->
+    <div class="modal" id="add-transaction-modal" role="dialog" aria-labelledby="add-modal-title" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="add-modal-title">Add Transaction</h3>
+                <button class="modal-close" id="close-add-modal" aria-label="Close dialog">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="add-transaction-form" class="transaction-form">
+                    <div class="form-step active" data-step="1">
+                        <div class="step-header">
+                            <h4>Transaction Type</h4>
+                            <p>Choose whether this is income or an expense</p>
+                        </div>
+                        
+                        <div class="type-selection">
+                            <label class="type-option">
+                                <input type="radio" name="transaction_type" value="income" required />
+                                <div class="type-card income">
+                                    <div class="type-icon">💰</div>
+                                    <div class="type-name">Income</div>
+                                    <div class="type-description">Money coming in</div>
+                                </div>
+                            </label>
+                            
+                            <label class="type-option">
+                                <input type="radio" name="transaction_type" value="expense" required />
+                                <div class="type-card expense">
+                                    <div class="type-icon">💸</div>
+                                    <div class="type-name">Expense</div>
+                                    <div class="type-description">Money going out</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-step" data-step="2">
+                        <div class="step-header">
+                            <h4>Transaction Details</h4>
+                            <p>Enter the amount and select a category</p>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="transaction-amount" class="form-label required">Amount</label>
+                                <div class="input-wrapper currency-input">
+                                    <span class="currency-symbol">$</span>
+                                    <input type="number" 
+                                           id="transaction-amount" 
+                                           name="amount" 
+                                           class="form-input" 
+                                           step="0.01" 
+                                           min="0.01" 
+                                           max="1000000" 
+                                           required 
+                                           placeholder="0.00" />
+                                </div>
+                                <div class="form-error" id="amount-error"></div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="transaction-category" class="form-label required">Category</label>
+                                <select id="transaction-category" name="category_id" class="form-select" required>
+                                    <option value="">Select a category</option>
+                                </select>
+                                <div class="form-error" id="category-error"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="transaction-date" class="form-label">Date</label>
+                            <input type="date" 
+                                   id="transaction-date" 
+                                   name="date" 
+                                   class="form-input" 
+                                   required />
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="transaction-description" class="form-label">Description</label>
+                            <input type="text" 
+                                   id="transaction-description" 
+                                   name="description" 
+                                   class="form-input" 
+                                   placeholder="Optional description"
+                                   maxlength="200" />
+                            <div class="form-help">
+                                <span id="description-count">0</span>/200 characters
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-step" data-step="3">
+                        <div class="step-header">
+                            <h4>Review Transaction</h4>
+                            <p>Confirm your transaction details before saving</p>
+                        </div>
+                        
+                        <div class="transaction-review">
+                            <div class="review-card">
+                                <div class="review-header">
+                                    <div class="review-icon" id="review-icon">💰</div>
+                                    <div class="review-type" id="review-type">Income</div>
+                                </div>
+                                <div class="review-amount" id="review-amount">$0.00</div>
+                                <div class="review-details">
+                                    <div class="review-item">
+                                        <span class="review-label">Category:</span>
+                                        <span class="review-value" id="review-category">-</span>
+                                    </div>
+                                    <div class="review-item">
+                                        <span class="review-label">Date:</span>
+                                        <span class="review-value" id="review-date">-</span>
+                                    </div>
+                                    <div class="review-item">
+                                        <span class="review-label">Description:</span>
+                                        <span class="review-value" id="review-description">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="step-indicator">
+                    <div class="step-dot active" data-step="1"></div>
+                    <div class="step-dot" data-step="2"></div>
+                    <div class="step-dot" data-step="3"></div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="modal-prev" style="display: none;">
+                        Previous
+                    </button>
+                    <button type="button" class="btn btn-outline" id="modal-cancel">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" id="modal-next">
+                        Next
+                    </button>
+                    <button type="submit" form="add-transaction-form" class="btn btn-primary" id="modal-save" style="display: none;">
+                        <span class="btn-text">Save Transaction</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Budget Modal -->
+    <div class="modal" id="create-budget-modal" role="dialog" aria-labelledby="budget-modal-title" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="budget-modal-title">Create Budget</h3>
+                <button class="modal-close" id="close-budget-modal" aria-label="Close dialog">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="create-budget-form" class="budget-form">
+                    <div class="form-group">
+                        <label for="budget-category" class="form-label required">Category</label>
+                        <select id="budget-category" name="category_id" class="form-select" required>
+                            <option value="">Select a category</option>
+                        </select>
+                        <div class="form-help">Choose an expense category to set a budget for</div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="budget-amount" class="form-label required">Budget Amount</label>
+                            <div class="input-wrapper currency-input">
+                                <span class="currency-symbol">$</span>
+                                <input type="number" 
+                                       id="budget-amount" 
+                                       name="amount" 
+                                       class="form-input" 
+                                       step="0.01" 
+                                       min="0.01" 
+                                       required 
+                                       placeholder="0.00" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="budget-period" class="form-label required">Period</label>
+                            <select id="budget-period" name="period" class="form-select" required>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly" selected>Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="budget-start-date" class="form-label">Start Date</label>
+                        <input type="date" 
+                               id="budget-start-date" 
+                               name="start_date" 
+                               class="form-input" 
+                               required />
+                        <div class="form-help">When should this budget start tracking</div>
+                    </div>
+                    
+                    <div class="budget-preview" id="budget-preview" style="display: none;">
+                        <h4>Budget Preview</h4>
+                        <div class="preview-card">
+                            <div class="preview-header">
+                                <span class="preview-category" id="preview-category-name">Category</span>
+                                <span class="preview-period" id="preview-period-text">monthly</span>
+                            </div>
+                            <div class="preview-amount" id="preview-budget-amount">$0.00</div>
+                            <div class="preview-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Daily allowance:</span>
+                                    <span class="detail-value" id="preview-daily">$0.00</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Weekly allowance:</span>
+                                    <span class="detail-value" id="preview-weekly">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" id="cancel-budget">Cancel</button>
+                    <button type="submit" form="create-budget-form" class="btn btn-primary" id="save-budget">
+                        <span class="btn-text">Create Budget</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal" id="confirmation-modal" role="dialog" aria-labelledby="confirm-title" aria-hidden="true">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3 id="confirm-title">Confirm Action</h3>
+                <button class="modal-close" id="close-confirm-modal" aria-label="Close dialog">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="confirm-content">
+                    <div class="confirm-icon" id="confirm-icon">⚠️</div>
+                    <p id="confirm-message">Are you sure you want to proceed?</p>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" id="confirm-cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirm-proceed">
+                        <span class="btn-text">Confirm</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- Floating Action Button -->
+    <div class="fab" id="fab" style="display: none;" role="button" aria-label="Quick actions menu" tabindex="0">
+        <span class="fab-icon" aria-hidden="true">+</span>
+        <div class="fab-menu" id="fab-menu">
+            <button class="fab-action" data-action="income" aria-label="Add income">
+                <span class="fab-action-icon">💰</span>
+                <span class="fab-action-text">Add Income</span>
+            </button>
+            <button class="fab-action" data-action="expense" aria-label="Add expense">
+                <span class="fab-action-icon">💸</span>
+                <span class="fab-action-text">Add Expense</span>
+            </button>
+            <button class="fab-action" data-action="budget" aria-label="Set budget">
+                <span class="fab-action-icon">🎯</span>
+                <span class="fab-action-text">Set Budget</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Scroll to Top Button -->
+    <button class="scroll-to-top" id="scroll-to-top" aria-label="Scroll to top" style="display: none;">
+        <span aria-hidden="true">↑</span>
+    </button>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    
+    <!-- Service Worker for PWA -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
