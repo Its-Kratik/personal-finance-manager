@@ -2038,9 +2038,7 @@
     </button>
 
     <!-- JavaScript -->
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
     
     <!-- Service Worker for PWA -->
     <script>
