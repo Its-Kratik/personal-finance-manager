@@ -82,11 +82,12 @@ csp = {
     'style-src': [
         "'self'",
         "'unsafe-inline'",
-        'fonts.googleapis.com'
+        'fonts.googleapis.com',
+        'data:'  # Allow data: URLs for inline fonts
     ],
-    'font-src': ["'self'", 'fonts.gstatic.com'],
+    'font-src': ["'self'", 'fonts.gstatic.com', 'data:'],  # Allow data: fonts
     'img-src': ["'self'", 'data:', 'blob:'],
-    'connect-src': "'self'",
+    'connect-src': ["'self'", 'cdn.jsdelivr.net'],  # Allow CDN connections
 }
 
 # Initialize security
