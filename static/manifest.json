@@ -4,7 +4,7 @@
   "description": "Advanced personal finance management with intelligent budgeting and analytics",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#4F8A8B",
+  "background_color": "#667eea",
   "theme_color": "#4F8A8B",
   "orientation": "portrait-primary",
   "scope": "/",
@@ -13,46 +13,21 @@
   "categories": ["finance", "productivity", "business"],
   "icons": [
     {
-      "src": "/static/images/logo-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/static/images/logo-512.png",
-      "sizes": "512x512",
+      "src": "/static/images/logo.png",
+      "sizes": "256x256",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/images/logo-72.png",
-      "sizes": "72x72",
-      "type": "image/png"
-    },
-    {
-      "src": "/static/images/logo-96.png",
-      "sizes": "96x96",
-      "type": "image/png"
-    },
-    {
-      "src": "/static/images/logo-128.png",
-      "sizes": "128x128",
-      "type": "image/png"
-    },
-    {
       "src": "/static/images/logo-144.png",
       "sizes": "144x144",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "/static/images/logo-152.png",
-      "sizes": "152x152",
-      "type": "image/png"
-    },
-    {
-      "src": "/static/images/logo-384.png",
-      "sizes": "384x384",
-      "type": "image/png"
+      "src": "/static/images/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
     }
   ],
   "shortcuts": [
@@ -63,50 +38,46 @@
       "url": "/dashboard?action=add-transaction",
       "icons": [
         {
-          "src": "/static/images/add-transaction-icon.png",
-          "sizes": "96x96"
+          "src": "/static/images/logo-144.png",
+          "sizes": "144x144",
+          "type": "image/png"
         }
       ]
     },
     {
       "name": "View Reports",
-      "short_name": "Reports",
+      "short_name": "Reports", 
       "description": "View financial reports and analytics",
       "url": "/reports",
       "icons": [
         {
-          "src": "/static/images/reports-icon.png",
-          "sizes": "96x96"
+          "src": "/static/images/logo-144.png",
+          "sizes": "144x144",
+          "type": "image/png"
         }
       ]
     },
     {
       "name": "Set Budget",
       "short_name": "Budget",
-      "description": "Create or manage budgets",
+      "description": "Create or manage budgets", 
       "url": "/budgets",
       "icons": [
         {
-          "src": "/static/images/budget-icon.png",
-          "sizes": "96x96"
+          "src": "/static/images/logo-144.png",
+          "sizes": "144x144", 
+          "type": "image/png"
         }
       ]
     }
   ],
   "screenshots": [
     {
-      "src": "/static/images/screenshot-desktop-dashboard.png",
-      "sizes": "1280x720",
+      "src": "/static/images/logo.png",
+      "sizes": "256x256",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Desktop dashboard view with financial overview"
-    },
-    {
-      "src": "/static/images/screenshot-mobile-dashboard.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Mobile dashboard with quick actions"
+      "label": "Personal Finance Manager Pro dashboard"
     }
   ]
 }
