@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 """
 Personal Finance Manager Pro - Database Model
-============================================
+=============================================
 
-Comprehensive database operations for personal finance management including:
-- User management with preferences and onboarding
-- Transaction CRUD with advanced filtering
-- Budget tracking and performance monitoring
-- Analytics and insights generation
-- Data export capabilities
-- Security-focused design
+Complete database operations supporting both PostgreSQL (Render) and SQLite (local).
+Handles users, transactions, budgets, categories, and analytics.
 
 Version: 1.0.0
-Author: Finance Manager Team
-License: MIT
 """
 
 import sqlite3
@@ -24,1207 +17,1341 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
 from io import StringIO
 import os
+import secrets
+from decimal import Decimal
+
+# PostgreSQL support for Render deployment
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    from psycopg2 import sql
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database configuration
+DATABASE_URL = os.environ.get('DATABASE_URL')
 DATABASE_PATH = os.environ.get('DATABASE_PATH', 'data/finance.db')
 
 def get_db_connection():
     """
-    Get database connection with row factory for easier access.
+    Get database connection - PostgreSQL for Render, SQLite for local development
     
     Returns:
-        sqlite3.Connection: Database connection with row factory
-        
-    Raises:
-        sqlite3.Error: If connection fails
+        Database connection with appropriate row factory
     """
     try:
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-        
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        # Enable foreign key constraints
-        conn.execute('PRAGMA foreign_keys = ON')
-        return conn
-    except sqlite3.Error as e:
+        if DATABASE_URL and DATABASE_URL.startswith('postgresql') and POSTGRES_AVAILABLE:
+            logger.info("Connecting to PostgreSQL database")
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+            conn.autocommit = False
+            return conn
+        else:
+            logger.info("Connecting to SQLite database")
+            os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+            conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute('PRAGMA foreign_keys = ON')
+            conn.execute('PRAGMA journal_mode = WAL')
+            return conn
+            
+    except Exception as e:
         logger.error(f"Database connection error: {e}")
         raise
 
+def is_postgres():
+    """Check if we're using PostgreSQL"""
+    return DATABASE_URL and DATABASE_URL.startswith('postgresql') and POSTGRES_AVAILABLE
+
+def get_placeholder():
+    """Get parameter placeholder for current database"""
+    return '%s' if is_postgres() else '?'
+
 def init_db():
-    """
-    Initialize database with all required tables and indexes.
-    
-    Creates tables for:
-    - users: User accounts with security features
-    - categories: Transaction categories with icons and colors
-    - transactions: Financial transactions with full tracking
-    - budgets: Budget management with periods
-    - user_preferences: User customization settings
-    - user_onboarding: Onboarding progress tracking
-    """
+    """Initialize database with all required tables and indexes"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Users table with enhanced security
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                onboarding_completed BOOLEAN DEFAULT FALSE,
-                last_login TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE,
-                failed_login_attempts INTEGER DEFAULT 0,
-                locked_until TIMESTAMP
-            )
-        """)
-        
-        # Categories with visual customization
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
-                icon TEXT DEFAULT '💳',
-                color TEXT DEFAULT '#4F8A8B',
-                is_default BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Transactions with comprehensive tracking
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                category_id INTEGER NOT NULL,
-                amount REAL NOT NULL CHECK(amount > 0),
-                type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
-                description TEXT,
-                date DATE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_recurring BOOLEAN DEFAULT FALSE,
-                tags TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (category_id) REFERENCES categories(id)
-            )
-        """)
-        
-        # Budgets with flexible periods
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS budgets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                category_id INTEGER NOT NULL,
-                amount REAL NOT NULL CHECK(amount > 0),
-                period TEXT DEFAULT 'monthly' CHECK(period IN ('weekly', 'monthly', 'yearly')),
-                start_date DATE NOT NULL,
-                end_date DATE,
-                is_active BOOLEAN DEFAULT TRUE,
-                alert_threshold REAL DEFAULT 0.8,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (category_id) REFERENCES categories(id),
-                UNIQUE(user_id, category_id, period)
-            )
-        """)
-        
-        # User preferences for customization
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_preferences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
-                currency TEXT DEFAULT 'USD',
-                currency_symbol TEXT DEFAULT '$',
-                date_format TEXT DEFAULT 'MM/DD/YYYY',
-                theme TEXT DEFAULT 'auto' CHECK(theme IN ('light', 'dark', 'auto')),
-                default_view TEXT DEFAULT 'all' CHECK(default_view IN ('all', 'income', 'expense')),
-                timezone TEXT DEFAULT 'UTC',
-                language TEXT DEFAULT 'en',
-                notifications_enabled BOOLEAN DEFAULT TRUE,
-                email_notifications BOOLEAN DEFAULT FALSE,
-                budget_alerts BOOLEAN DEFAULT TRUE,
-                export_format TEXT DEFAULT 'csv',
-                decimal_places INTEGER DEFAULT 2,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Onboarding progress tracking
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_onboarding (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
-                tour_completed BOOLEAN DEFAULT FALSE,
-                sample_data_added BOOLEAN DEFAULT FALSE,
-                first_transaction_added BOOLEAN DEFAULT FALSE,
-                first_budget_set BOOLEAN DEFAULT FALSE,
-                dashboard_visited BOOLEAN DEFAULT FALSE,
-                reports_visited BOOLEAN DEFAULT FALSE,
-                settings_visited BOOLEAN DEFAULT FALSE,
-                export_used BOOLEAN DEFAULT FALSE,
-                search_used BOOLEAN DEFAULT FALSE,
-                checklist_completed BOOLEAN DEFAULT FALSE,
-                completion_date TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Performance indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions(amount)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_user_category ON budgets(user_id, category_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_active ON budgets(is_active)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        
-        # Triggers for automatic timestamp updates
-        cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS update_transaction_timestamp 
-            AFTER UPDATE ON transactions
-            BEGIN
-                UPDATE transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-            END
-        """)
-        
-        cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS update_budget_timestamp 
-            AFTER UPDATE ON budgets
-            BEGIN
-                UPDATE budgets SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-            END
-        """)
+        if is_postgres():
+            logger.info("Creating PostgreSQL tables")
+            _create_postgres_tables(cursor)
+        else:
+            logger.info("Creating SQLite tables")
+            _create_sqlite_tables(cursor)
         
         conn.commit()
-        logger.info("Database initialized successfully with all tables and indexes")
+        logger.info("Database initialized successfully")
         
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise
     finally:
         conn.close()
 
-def seed_default_categories():
-    """
-    Insert default categories with professional icons and colors.
+def _create_postgres_tables(cursor):
+    """Create PostgreSQL tables with appropriate data types and constraints"""
     
-    Creates comprehensive categories for both income and expenses
-    with modern icons and color coding for better UX.
-    """
-    default_categories = [
-        # Income categories
-        ('Salary', 'income', '💰', '#4CAF50'),
-        ('Freelance', 'income', '💼', '#2196F3'),
-        ('Business', 'income', '🏢', '#FF9800'),
-        ('Investments', 'income', '📈', '#9C27B0'),
-        ('Rental Income', 'income', '🏠', '#607D8B'),
-        ('Side Hustle', 'income', '⚡', '#00BCD4'),
-        ('Gifts Received', 'income', '🎁', '#E91E63'),
-        ('Other Income', 'income', '💵', '#795548'),
-        
-        # Expense categories
-        ('Food & Dining', 'expense', '🍽️', '#F44336'),
-        ('Transportation', 'expense', '🚗', '#3F51B5'),
-        ('Housing', 'expense', '🏠', '#795548'),
-        ('Utilities', 'expense', '⚡', '#FF5722'),
-        ('Healthcare', 'expense', '🏥', '#E91E63'),
-        ('Entertainment', 'expense', '🎬', '#9C27B0'),
-        ('Shopping', 'expense', '🛒', '#FF9800'),
-        ('Education', 'expense', '📚', '#2196F3'),
-        ('Insurance', 'expense', '🛡️', '#607D8B'),
-        ('Fitness', 'expense', '💪', '#4CAF50'),
-        ('Travel', 'expense', '✈️', '#00BCD4'),
-        ('Personal Care', 'expense', '💅', '#E91E63'),
-        ('Gifts & Donations', 'expense', '🎁', '#9C27B0'),
-        ('Subscriptions', 'expense', '📱', '#FF5722'),
-        ('Other Expenses', 'expense', '💸', '#607D8B')
+    # Users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            email VARCHAR(100) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            onboarding_completed BOOLEAN DEFAULT FALSE,
+            last_login TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            failed_login_attempts INTEGER DEFAULT 0,
+            locked_until TIMESTAMP
+        )
+    """)
+    
+    # Categories table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) UNIQUE NOT NULL,
+            type VARCHAR(10) NOT NULL CHECK(type IN ('income', 'expense')),
+            icon VARCHAR(10) DEFAULT '💳',
+            color VARCHAR(20) DEFAULT '#4F8A8B',
+            is_default BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Transactions table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            amount DECIMAL(12,2) NOT NULL CHECK(amount > 0),
+            type VARCHAR(10) NOT NULL CHECK(type IN ('income', 'expense')),
+            description TEXT,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_recurring BOOLEAN DEFAULT FALSE,
+            tags TEXT
+        )
+    """)
+    
+    # Budgets table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS budgets (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            amount DECIMAL(12,2) NOT NULL CHECK(amount > 0),
+            period VARCHAR(20) DEFAULT 'monthly' CHECK(period IN ('weekly', 'monthly', 'yearly')),
+            start_date DATE NOT NULL,
+            end_date DATE,
+            is_active BOOLEAN DEFAULT TRUE,
+            alert_threshold DECIMAL(3,2) DEFAULT 0.8,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, category_id, period)
+        )
+    """)
+    
+    # User preferences table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            currency VARCHAR(10) DEFAULT 'USD',
+            currency_symbol VARCHAR(10) DEFAULT '$',
+            date_format VARCHAR(20) DEFAULT 'MM/DD/YYYY',
+            theme VARCHAR(10) DEFAULT 'auto' CHECK(theme IN ('light', 'dark', 'auto')),
+            default_view VARCHAR(20) DEFAULT 'all' CHECK(default_view IN ('all', 'income', 'expense')),
+            timezone VARCHAR(50) DEFAULT 'UTC',
+            language VARCHAR(10) DEFAULT 'en',
+            notifications_enabled BOOLEAN DEFAULT TRUE,
+            email_notifications BOOLEAN DEFAULT FALSE,
+            budget_alerts BOOLEAN DEFAULT TRUE,
+            export_format VARCHAR(10) DEFAULT 'csv',
+            decimal_places INTEGER DEFAULT 2,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # User onboarding table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_onboarding (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tour_completed BOOLEAN DEFAULT FALSE,
+            sample_data_added BOOLEAN DEFAULT FALSE,
+            first_transaction_added BOOLEAN DEFAULT FALSE,
+            first_budget_set BOOLEAN DEFAULT FALSE,
+            dashboard_visited BOOLEAN DEFAULT FALSE,
+            reports_visited BOOLEAN DEFAULT FALSE,
+            settings_visited BOOLEAN DEFAULT FALSE,
+            export_used BOOLEAN DEFAULT FALSE,
+            search_used BOOLEAN DEFAULT FALSE,
+            checklist_completed BOOLEAN DEFAULT FALSE,
+            completion_date TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Create indexes
+    _create_postgres_indexes(cursor)
+
+def _create_sqlite_tables(cursor):
+    """Create SQLite tables with appropriate data types and constraints"""
+    
+    # Users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            onboarding_completed BOOLEAN DEFAULT FALSE,
+            last_login TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            failed_login_attempts INTEGER DEFAULT 0,
+            locked_until TIMESTAMP
+        )
+    """)
+    
+    # Categories table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+            icon TEXT DEFAULT '💳',
+            color TEXT DEFAULT '#4F8A8B',
+            is_default BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Transactions table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            amount DECIMAL(12,2) NOT NULL CHECK(amount > 0),
+            type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+            description TEXT,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_recurring BOOLEAN DEFAULT FALSE,
+            tags TEXT
+        )
+    """)
+    
+    # Budgets table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS budgets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category_id INTEGER NOT NULL REFERENCES categories(id),
+            amount DECIMAL(12,2) NOT NULL CHECK(amount > 0),
+            period TEXT DEFAULT 'monthly' CHECK(period IN ('weekly', 'monthly', 'yearly')),
+            start_date DATE NOT NULL,
+            end_date DATE,
+            is_active BOOLEAN DEFAULT TRUE,
+            alert_threshold DECIMAL(3,2) DEFAULT 0.8,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, category_id, period)
+        )
+    """)
+    
+    # User preferences table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            currency TEXT DEFAULT 'USD',
+            currency_symbol TEXT DEFAULT '$',
+            date_format TEXT DEFAULT 'MM/DD/YYYY',
+            theme TEXT DEFAULT 'auto' CHECK(theme IN ('light', 'dark', 'auto')),
+            default_view TEXT DEFAULT 'all' CHECK(default_view IN ('all', 'income', 'expense')),
+            timezone TEXT DEFAULT 'UTC',
+            language TEXT DEFAULT 'en',
+            notifications_enabled BOOLEAN DEFAULT TRUE,
+            email_notifications BOOLEAN DEFAULT FALSE,
+            budget_alerts BOOLEAN DEFAULT TRUE,
+            export_format TEXT DEFAULT 'csv',
+            decimal_places INTEGER DEFAULT 2,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # User onboarding table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_onboarding (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tour_completed BOOLEAN DEFAULT FALSE,
+            sample_data_added BOOLEAN DEFAULT FALSE,
+            first_transaction_added BOOLEAN DEFAULT FALSE,
+            first_budget_set BOOLEAN DEFAULT FALSE,
+            dashboard_visited BOOLEAN DEFAULT FALSE,
+            reports_visited BOOLEAN DEFAULT FALSE,
+            settings_visited BOOLEAN DEFAULT FALSE,
+            export_used BOOLEAN DEFAULT FALSE,
+            search_used BOOLEAN DEFAULT FALSE,
+            checklist_completed BOOLEAN DEFAULT FALSE,
+            completion_date TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Create indexes
+    _create_sqlite_indexes(cursor)
+
+def _create_postgres_indexes(cursor):
+    """Create PostgreSQL indexes for performance"""
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user_type ON transactions(user_id, type)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_user_category ON budgets(user_id, category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_user_active ON budgets(user_id, is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+        "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+        "CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type)"
     ]
     
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        for name, cat_type, icon, color in default_categories:
-            cursor.execute("""
-                INSERT OR IGNORE INTO categories (name, type, icon, color, is_default) 
-                VALUES (?, ?, ?, ?, TRUE)
-            """, (name, cat_type, icon, color))
-        
-        conn.commit()
-        logger.info(f"Default categories seeded successfully ({len(default_categories)} categories)")
-        
-    except sqlite3.Error as e:
-        logger.error(f"Category seeding error: {e}")
-        raise
-    finally:
-        conn.close()
+    for index_sql in indexes:
+        cursor.execute(index_sql)
+
+def _create_sqlite_indexes(cursor):
+    """Create SQLite indexes for performance"""
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user_type ON transactions(user_id, type)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_user_category ON budgets(user_id, category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_user_active ON budgets(user_id, is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+        "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+        "CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type)"
+    ]
+    
+    for index_sql in indexes:
+        cursor.execute(index_sql)
 
 # User Management Functions
 def create_user(username: str, email: str, password_hash: str) -> Optional[int]:
-    """
-    Create a new user with default preferences and onboarding record.
-    
-    Args:
-        username: Unique username (3-50 characters)
-        email: Unique email address
-        password_hash: Secure password hash
-        
-    Returns:
-        User ID if successful, None if failed
-        
-    Raises:
-        sqlite3.IntegrityError: If username or email already exists
-    """
+    """Create a new user with default preferences and onboarding record"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        # Create user
-        cursor.execute("""
-            INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)
-        """, (username, email, password_hash))
-        
-        user_id = cursor.lastrowid
-        
-        # Create default preferences
-        cursor.execute("""
-            INSERT INTO user_preferences (user_id) VALUES (?)
-        """, (user_id,))
-        
-        # Create onboarding record
-        cursor.execute("""
-            INSERT INTO user_onboarding (user_id) VALUES (?)
-        """, (user_id,))
+        if is_postgres():
+            cursor.execute(f"""
+                INSERT INTO users (username, email, password_hash) 
+                VALUES ({placeholder}, {placeholder}, {placeholder}) RETURNING id
+            """, (username, email, password_hash))
+            user_id = cursor.fetchone()['id']
+            
+            cursor.execute(f"""
+                INSERT INTO user_preferences (user_id) VALUES ({placeholder})
+            """, (user_id,))
+            
+            cursor.execute(f"""
+                INSERT INTO user_onboarding (user_id) VALUES ({placeholder})
+            """, (user_id,))
+        else:
+            cursor.execute(f"""
+                INSERT INTO users (username, email, password_hash) VALUES ({placeholder}, {placeholder}, {placeholder})
+            """, (username, email, password_hash))
+            user_id = cursor.lastrowid
+            
+            cursor.execute(f"""
+                INSERT INTO user_preferences (user_id) VALUES ({placeholder})
+            """, (user_id,))
+            
+            cursor.execute(f"""
+                INSERT INTO user_onboarding (user_id) VALUES ({placeholder})
+            """, (user_id,))
         
         conn.commit()
         logger.info(f"User created successfully: {username} (ID: {user_id})")
         return user_id
         
-    except sqlite3.IntegrityError as e:
-        logger.error(f"User creation failed - duplicate: {e}")
-        return None
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"User creation error: {e}")
-        raise
+        return None
     finally:
         conn.close()
 
-def get_user_by_username(username: str) -> Optional[sqlite3.Row]:
-    """Get user by username."""
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Get user by username"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT id, username, email, password_hash, created_at, last_login, is_active,
+        cursor.execute(f"""
+            SELECT id, username, email, password_hash, created_at, last_login, is_active, 
                    failed_login_attempts, locked_until
             FROM users 
-            WHERE username = ? AND is_active = TRUE
+            WHERE username = {placeholder} AND is_active = TRUE
         """, (username,))
         
-        return cursor.fetchone()
+        result = cursor.fetchone()
+        return dict(result) if result else None
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching user by username: {e}")
+    except Exception as e:
+        logger.error(f"Get user error: {e}")
         return None
     finally:
         conn.close()
 
-def get_user_by_email(email: str) -> Optional[sqlite3.Row]:
-    """Get user by email address."""
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Get user by email"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, username, email, password_hash, created_at, last_login, is_active
             FROM users 
-            WHERE email = ? AND is_active = TRUE
+            WHERE email = {placeholder} AND is_active = TRUE
         """, (email,))
         
-        return cursor.fetchone()
+        result = cursor.fetchone()
+        return dict(result) if result else None
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching user by email: {e}")
+    except Exception as e:
+        logger.error(f"Get user by email error: {e}")
         return None
     finally:
         conn.close()
 
-def update_last_login(user_id: int) -> bool:
-    """Update user's last login timestamp."""
+def update_user_login(user_id: int) -> bool:
+    """Update user's last login timestamp and reset failed attempts"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE users 
-            SET last_login = CURRENT_TIMESTAMP, failed_login_attempts = 0 
-            WHERE id = ?
+            SET last_login = CURRENT_TIMESTAMP, 
+                failed_login_attempts = 0,
+                locked_until = NULL
+            WHERE id = {placeholder}
         """, (user_id,))
         
         conn.commit()
-        return cursor.rowcount > 0
+        return True
         
-    except sqlite3.Error as e:
-        logger.error(f"Error updating last login: {e}")
+    except Exception as e:
+        logger.error(f"Update user login error: {e}")
         return False
     finally:
         conn.close()
 
-# Transaction Management Functions
-def add_transaction(user_id: int, category_id: int, amount: float, 
-                   transaction_type: str, description: str = '', 
-                   date: str = None) -> Optional[int]:
-    """
-    Add a new transaction with validation.
-    
-    Args:
-        user_id: User ID
-        category_id: Category ID
-        amount: Transaction amount (positive)
-        transaction_type: 'income' or 'expense'
-        description: Optional description
-        date: Transaction date (YYYY-MM-DD) or None for today
-        
-    Returns:
-        Transaction ID if successful, None if failed
-    """
+def increment_failed_login_attempts(username: str) -> bool:
+    """Increment failed login attempts and lock account if necessary"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
+        # Get current attempts
+        cursor.execute(f"""
+            SELECT failed_login_attempts FROM users WHERE username = {placeholder}
+        """, (username,))
         
-        cursor.execute("""
-            INSERT INTO transactions (user_id, category_id, amount, type, description, date)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (user_id, category_id, amount, transaction_type, description, date))
+        result = cursor.fetchone()
+        if not result:
+            return False
+            
+        attempts = result[0] + 1
         
-        transaction_id = cursor.lastrowid
+        # Lock account for 15 minutes after 5 failed attempts
+        if attempts >= 5:
+            if is_postgres():
+                cursor.execute(f"""
+                    UPDATE users 
+                    SET failed_login_attempts = {placeholder}, 
+                        locked_until = CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+                    WHERE username = {placeholder}
+                """, (attempts, username))
+            else:
+                cursor.execute(f"""
+                    UPDATE users 
+                    SET failed_login_attempts = {placeholder}, 
+                        locked_until = datetime('now', '+15 minutes')
+                    WHERE username = {placeholder}
+                """, (attempts, username))
+        else:
+            cursor.execute(f"""
+                UPDATE users 
+                SET failed_login_attempts = {placeholder}
+                WHERE username = {placeholder}
+            """, (attempts, username))
+        
         conn.commit()
+        return True
         
-        logger.info(f"Transaction added: ID {transaction_id}, User {user_id}, Amount {amount}")
-        return transaction_id
+    except Exception as e:
+        logger.error(f"Increment failed login attempts error: {e}")
+        return False
+    finally:
+        conn.close()
+
+# Category Management Functions
+def seed_default_categories():
+    """Seed database with default income and expense categories"""
+    default_categories = [
+        # Income categories
+        ('Salary', 'income', '💰', '#38B27B'),
+        ('Freelance', 'income', '💼', '#4CAF50'),
+        ('Investment', 'income', '📈', '#2196F3'),
+        ('Gift', 'income', '🎁', '#FF9800'),
+        ('Other Income', 'income', '💵', '#607D8B'),
         
-    except sqlite3.Error as e:
-        logger.error(f"Transaction creation error: {e}")
+        # Expense categories
+        ('Food & Dining', 'expense', '🍕', '#FF5722'),
+        ('Transportation', 'expense', '🚗', '#9C27B0'),
+        ('Shopping', 'expense', '🛍️', '#E91E63'),
+        ('Entertainment', 'expense', '🎬', '#3F51B5'),
+        ('Bills & Utilities', 'expense', '⚡', '#FF9800'),
+        ('Healthcare', 'expense', '🏥', '#F44336'),
+        ('Education', 'expense', '📚', '#009688'),
+        ('Travel', 'expense', '✈️', '#00BCD4'),
+        ('Home & Garden', 'expense', '🏠', '#8BC34A'),
+        ('Personal Care', 'expense', '💄', '#FFEB3B'),
+        ('Insurance', 'expense', '🛡️', '#795548'),
+        ('Taxes', 'expense', '📊', '#607D8B'),
+        ('Other Expense', 'expense', '💸', '#9E9E9E')
+    ]
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        for name, cat_type, icon, color in default_categories:
+            try:
+                cursor.execute(f"""
+                    INSERT INTO categories (name, type, icon, color) 
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+                """, (name, cat_type, icon, color))
+            except Exception:
+                # Category already exists, skip
+                pass
+        
+        conn.commit()
+        logger.info("Default categories seeded successfully")
+        
+    except Exception as e:
+        logger.error(f"Seed categories error: {e}")
+    finally:
+        conn.close()
+
+def get_categories(category_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Get all categories, optionally filtered by type"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        if category_type:
+            cursor.execute(f"""
+                SELECT id, name, type, icon, color, is_default, created_at
+                FROM categories 
+                WHERE type = {placeholder}
+                ORDER BY name
+            """, (category_type,))
+        else:
+            cursor.execute("""
+                SELECT id, name, type, icon, color, is_default, created_at
+                FROM categories 
+                ORDER BY type, name
+            """)
+        
+        return [dict(row) for row in cursor.fetchall()]
+        
+    except Exception as e:
+        logger.error(f"Get categories error: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_category_by_id(category_id: int) -> Optional[Dict[str, Any]]:
+    """Get category by ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT id, name, type, icon, color, is_default, created_at
+            FROM categories 
+            WHERE id = {placeholder}
+        """, (category_id,))
+        
+        result = cursor.fetchone()
+        return dict(result) if result else None
+        
+    except Exception as e:
+        logger.error(f"Get category by ID error: {e}")
         return None
     finally:
         conn.close()
 
-def get_transactions(user_id: int, filters: Dict[str, Any] = None) -> List[sqlite3.Row]:
-    """
-    Get user's transactions with optional filtering and sorting.
-    
-    Args:
-        user_id: User ID
-        filters: Optional filters dict with keys:
-            - type: 'income', 'expense', or 'all'
-            - category_id: Category ID
-            - start_date: Start date (YYYY-MM-DD)
-            - end_date: End date (YYYY-MM-DD)
-            - sort_by: 'date_desc', 'date_asc', 'amount_desc', 'amount_asc'
-            
-    Returns:
-        List of transaction records with category information
-    """
+# Transaction Management Functions
+def create_transaction(user_id: int, transaction_type: str, amount: float, 
+                      category_id: int, date: str, description: Optional[str] = None) -> Optional[int]:
+    """Create a new transaction"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        query = """
-            SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color
+        if is_postgres():
+            cursor.execute(f"""
+                INSERT INTO transactions (user_id, category_id, amount, type, description, date) 
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}) 
+                RETURNING id
+            """, (user_id, category_id, amount, transaction_type, description, date))
+            
+            transaction_id = cursor.fetchone()['id']
+        else:
+            cursor.execute(f"""
+                INSERT INTO transactions (user_id, category_id, amount, type, description, date) 
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (user_id, category_id, amount, transaction_type, description, date))
+            
+            transaction_id = cursor.lastrowid
+        
+        conn.commit()
+        logger.info(f"Transaction created successfully: ID {transaction_id}")
+        return transaction_id
+        
+    except Exception as e:
+        logger.error(f"Create transaction error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_transactions(user_id: int, limit: int = 50, offset: int = 0, 
+                    filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Get user transactions with optional filtering"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        # Base query
+        query = f"""
+            SELECT t.id, t.user_id, t.category_id, t.amount, t.type, t.description, 
+                   t.date, t.created_at, t.updated_at,
+                   c.name as category_name, c.icon as category_icon, c.color as category_color
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
-            WHERE t.user_id = ?
+            WHERE t.user_id = {placeholder}
         """
+        
         params = [user_id]
         
         # Apply filters
         if filters:
             if filters.get('type') and filters['type'] != 'all':
-                query += " AND t.type = ?"
+                query += f" AND t.type = {placeholder}"
                 params.append(filters['type'])
             
             if filters.get('category_id'):
-                query += " AND t.category_id = ?"
+                query += f" AND t.category_id = {placeholder}"
                 params.append(filters['category_id'])
             
             if filters.get('start_date'):
-                query += " AND t.date >= ?"
+                query += f" AND t.date >= {placeholder}"
                 params.append(filters['start_date'])
             
             if filters.get('end_date'):
-                query += " AND t.date <= ?"
+                query += f" AND t.date <= {placeholder}"
                 params.append(filters['end_date'])
+            
+            if filters.get('search'):
+                query += f" AND (t.description ILIKE {placeholder} OR c.name ILIKE {placeholder})" if is_postgres() else f" AND (t.description LIKE {placeholder} OR c.name LIKE {placeholder})"
+                search_term = f"%{filters['search']}%"
+                params.extend([search_term, search_term])
         
         # Apply sorting
         sort_by = filters.get('sort_by', 'date_desc') if filters else 'date_desc'
         if sort_by == 'date_asc':
-            query += " ORDER BY t.date ASC, t.created_at ASC"
+            query += " ORDER BY t.date ASC"
         elif sort_by == 'amount_desc':
             query += " ORDER BY t.amount DESC"
         elif sort_by == 'amount_asc':
             query += " ORDER BY t.amount ASC"
-        else:  # default: date_desc
-            query += " ORDER BY t.date DESC, t.created_at DESC"
+        else:  # date_desc
+            query += " ORDER BY t.date DESC"
         
-        # Limit for performance
-        query += " LIMIT 1000"
+        # Apply pagination
+        query += f" LIMIT {placeholder} OFFSET {placeholder}"
+        params.extend([limit, offset])
         
         cursor.execute(query, params)
-        return cursor.fetchall()
+        return [dict(row) for row in cursor.fetchall()]
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching transactions: {e}")
+    except Exception as e:
+        logger.error(f"Get transactions error: {e}")
         return []
     finally:
         conn.close()
 
-def update_transaction(transaction_id: int, user_id: int, data: Dict[str, Any]) -> bool:
-    """Update a transaction (user must own it)."""
+def get_transaction_by_id(user_id: int, transaction_id: int) -> Optional[Dict[str, Any]]:
+    """Get a specific transaction by ID"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        # Build dynamic update query
-        set_clauses = []
-        values = []
+        cursor.execute(f"""
+            SELECT t.id, t.user_id, t.category_id, t.amount, t.type, t.description, 
+                   t.date, t.created_at, t.updated_at,
+                   c.name as category_name, c.icon as category_icon, c.color as category_color
+            FROM transactions t
+            JOIN categories c ON t.category_id = c.id
+            WHERE t.id = {placeholder} AND t.user_id = {placeholder}
+        """, (transaction_id, user_id))
         
-        allowed_fields = ['amount', 'type', 'category_id', 'description', 'date']
+        result = cursor.fetchone()
+        return dict(result) if result else None
         
-        for field, value in data.items():
-            if field in allowed_fields:
-                set_clauses.append(f"{field} = ?")
-                values.append(value)
+    except Exception as e:
+        logger.error(f"Get transaction by ID error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def update_transaction(user_id: int, transaction_id: int, **kwargs) -> bool:
+    """Update a transaction"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        if not set_clauses:
+        # Build update query dynamically
+        valid_fields = ['amount', 'type', 'category_id', 'description', 'date']
+        updates = []
+        params = []
+        
+        for field, value in kwargs.items():
+            if field in valid_fields and value is not None:
+                updates.append(f"{field} = {placeholder}")
+                params.append(value)
+        
+        if not updates:
             return False
         
-        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-        values.extend([transaction_id, user_id])
+        # Add updated_at timestamp
+        updates.append(f"updated_at = CURRENT_TIMESTAMP")
+        
+        # Add WHERE conditions
+        params.extend([transaction_id, user_id])
         
         query = f"""
             UPDATE transactions 
-            SET {', '.join(set_clauses)} 
-            WHERE id = ? AND user_id = ?
+            SET {', '.join(updates)}
+            WHERE id = {placeholder} AND user_id = {placeholder}
         """
         
-        cursor.execute(query, values)
+        cursor.execute(query, params)
         conn.commit()
         
         return cursor.rowcount > 0
         
-    except sqlite3.Error as e:
-        logger.error(f"Error updating transaction: {e}")
+    except Exception as e:
+        logger.error(f"Update transaction error: {e}")
         return False
     finally:
         conn.close()
 
-def delete_transaction(transaction_id: int, user_id: int) -> bool:
-    """Delete a transaction (user must own it)."""
+def delete_transaction(user_id: int, transaction_id: int) -> bool:
+    """Delete a transaction"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             DELETE FROM transactions 
-            WHERE id = ? AND user_id = ?
+            WHERE id = {placeholder} AND user_id = {placeholder}
         """, (transaction_id, user_id))
         
         conn.commit()
         return cursor.rowcount > 0
         
-    except sqlite3.Error as e:
-        logger.error(f"Error deleting transaction: {e}")
+    except Exception as e:
+        logger.error(f"Delete transaction error: {e}")
         return False
     finally:
         conn.close()
 
-def search_transactions(user_id: int, search_term: str, 
-                       filters: Dict[str, Any] = None) -> List[sqlite3.Row]:
-    """
-    Search transactions by description, amount, or category.
-    
-    Args:
-        user_id: User ID
-        search_term: Search query string
-        filters: Optional additional filters
-        
-    Returns:
-        List of matching transaction records
-    """
+def get_transaction_summary(user_id: int, start_date: Optional[str] = None, 
+                          end_date: Optional[str] = None) -> Dict[str, Any]:
+    """Get transaction summary for a user"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        query = """
-            SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            WHERE t.user_id = ?
-            AND (
-                t.description LIKE ? OR
-                c.name LIKE ? OR
-                CAST(t.amount AS TEXT) LIKE ?
-            )
-        """
+        # Base query conditions
+        where_conditions = [f"user_id = {placeholder}"]
+        params = [user_id]
         
-        search_pattern = f'%{search_term}%'
-        params = [user_id, search_pattern, search_pattern, search_pattern]
+        if start_date:
+            where_conditions.append(f"date >= {placeholder}")
+            params.append(start_date)
         
-        # Apply additional filters
-        if filters:
-            if filters.get('type') and filters['type'] != 'all':
-                query += " AND t.type = ?"
-                params.append(filters['type'])
-            
-            if filters.get('category_id'):
-                query += " AND t.category_id = ?"
-                params.append(filters['category_id'])
-            
-            if filters.get('start_date'):
-                query += " AND t.date >= ?"
-                params.append(filters['start_date'])
-            
-            if filters.get('end_date'):
-                query += " AND t.date <= ?"
-                params.append(filters['end_date'])
+        if end_date:
+            where_conditions.append(f"date <= {placeholder}")
+            params.append(end_date)
         
-        query += " ORDER BY t.date DESC, t.created_at DESC LIMIT 500"
+        where_clause = " AND ".join(where_conditions)
         
-        cursor.execute(query, params)
-        return cursor.fetchall()
+        # Get summary data
+        cursor.execute(f"""
+            SELECT 
+                COUNT(*) as total_count,
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense,
+                COUNT(CASE WHEN type = 'income' THEN 1 END) as income_count,
+                COUNT(CASE WHEN type = 'expense' THEN 1 END) as expense_count
+            FROM transactions 
+            WHERE {where_clause}
+        """, params)
         
-    except sqlite3.Error as e:
-        logger.error(f"Error searching transactions: {e}")
-        return []
-    finally:
-        conn.close()
-
-def export_transactions_csv(user_id: int, filters: Dict[str, Any] = None) -> str:
-    """Export transactions to CSV format."""
-    try:
-        transactions = get_transactions(user_id, filters)
+        result = cursor.fetchone()
         
-        output = StringIO()
-        writer = csv.writer(output)
+        if result:
+            summary = dict(result)
+            summary['net_balance'] = float(summary['total_income']) - float(summary['total_expense'])
+            summary['savings_rate'] = (summary['net_balance'] / float(summary['total_income']) * 100) if summary['total_income'] > 0 else 0
+            return summary
         
-        # Write header
-        writer.writerow(['Date', 'Category', 'Type', 'Amount', 'Description', 'Created At'])
-        
-        # Write data
-        for transaction in transactions:
-            writer.writerow([
-                transaction['date'],
-                transaction['category_name'],
-                transaction['type'].title(),
-                transaction['amount'],
-                transaction['description'] or '',
-                transaction['created_at']
-            ])
-        
-        return output.getvalue()
+        return {
+            'total_count': 0,
+            'total_income': 0,
+            'total_expense': 0,
+            'income_count': 0,
+            'expense_count': 0,
+            'net_balance': 0,
+            'savings_rate': 0
+        }
         
     except Exception as e:
-        logger.error(f"Error exporting transactions to CSV: {e}")
-        return ""
-
-# Budget Management Functions
-def create_budget(user_id: int, category_id: int, amount: float, 
-                 period: str = 'monthly', start_date: str = None) -> Optional[int]:
-    """Create a new budget."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if not start_date:
-            start_date = datetime.now().strftime('%Y-%m-%d')
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO budgets (user_id, category_id, amount, period, start_date)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user_id, category_id, amount, period, start_date))
-        
-        budget_id = cursor.lastrowid
-        conn.commit()
-        
-        logger.info(f"Budget created successfully with ID: {budget_id}")
-        return budget_id
-        
-    except sqlite3.Error as e:
-        logger.error(f"Budget creation error: {e}")
-        raise
-    finally:
-        conn.close()
-
-def get_user_budgets(user_id: int) -> List[sqlite3.Row]:
-    """Get all active budgets for a user."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
-            FROM budgets b
-            JOIN categories c ON b.category_id = c.id
-            WHERE b.user_id = ? AND b.is_active = TRUE
-            ORDER BY c.name
-        """, (user_id,))
-        
-        return cursor.fetchall()
-        
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching user budgets: {e}")
-        return []
-    finally:
-        conn.close()
-
-def get_budget_performance(user_id: int, period: str = 'monthly') -> List[Dict[str, Any]]:
-    """Get budget vs actual spending comparison."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get current period dates
-        now = datetime.now()
-        if period == 'monthly':
-            start_date = now.replace(day=1).strftime('%Y-%m-%d')
-            end_date = (now.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            end_date = end_date.strftime('%Y-%m-%d')
-        else:
-            # Default to current month
-            start_date = now.replace(day=1).strftime('%Y-%m-%d')
-            end_date = (now.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            end_date = end_date.strftime('%Y-%m-%d')
-        
-        cursor.execute("""
-            SELECT 
-                b.id as budget_id,
-                b.amount as budget_amount,
-                b.period,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.color as category_color,
-                COALESCE(SUM(t.amount), 0) as actual_spent,
-                b.amount - COALESCE(SUM(t.amount), 0) as remaining
-            FROM budgets b
-            JOIN categories c ON b.category_id = c.id
-            LEFT JOIN transactions t ON b.category_id = t.category_id 
-                AND t.user_id = b.user_id 
-                AND t.type = 'expense'
-                AND t.date >= ? 
-                AND t.date <= ?
-            WHERE b.user_id = ? AND b.is_active = TRUE AND b.period = ?
-            GROUP BY b.id, b.amount, b.period, c.name, c.icon, c.color
-            ORDER BY c.name
-        """, (start_date, end_date, user_id, period))
-        
-        results = cursor.fetchall()
-        
-        budget_performance = []
-        for row in results:
-            percentage_used = (row['actual_spent'] / row['budget_amount']) * 100 if row['budget_amount'] > 0 else 0
-            
-            status = 'safe'
-            if percentage_used >= 100:
-                status = 'over'
-            elif percentage_used >= 80:
-                status = 'warning'
-            elif percentage_used >= 60:
-                status = 'caution'
-            
-            budget_performance.append({
-                'budget_id': row['budget_id'],
-                'category_name': row['category_name'],
-                'category_icon': row['category_icon'],
-                'category_color': row['category_color'],
-                'budget_amount': row['budget_amount'],
-                'actual_spent': row['actual_spent'],
-                'remaining': row['remaining'],
-                'percentage_used': round(percentage_used, 1),
-                'status': status,
-                'period': row['period']
-            })
-        
-        return budget_performance
-        
-    except sqlite3.Error as e:
-        logger.error(f"Error getting budget performance: {e}")
-        return []
-    finally:
-        conn.close()
-
-# Analytics Functions
-def get_transaction_insights(user_id: int, period_days: int = 30) -> Dict[str, Any]:
-    """Get transaction insights and analytics."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=period_days)).strftime('%Y-%m-%d')
-        
-        insights = {}
-        
-        # Average daily spending
-        cursor.execute("""
-            SELECT AVG(daily_total) as avg_daily_spending
-            FROM (
-                SELECT DATE(date) as day, SUM(amount) as daily_total
-                FROM transactions
-                WHERE user_id = ? AND type = 'expense' 
-                AND date >= ? AND date <= ?
-                GROUP BY DATE(date)
-            )
-        """, (user_id, start_date, end_date))
-        
-        result = cursor.fetchone()
-        insights['avg_daily_spending'] = result['avg_daily_spending'] or 0
-        
-        # Largest transaction
-        cursor.execute("""
-            SELECT amount, description, category_name, date, type
-            FROM (
-                SELECT t.amount, t.description, c.name as category_name, t.date, t.type,
-                       ROW_NUMBER() OVER (ORDER BY t.amount DESC) as rn
-                FROM transactions t
-                JOIN categories c ON t.category_id = c.id
-                WHERE t.user_id = ? AND t.date >= ? AND t.date <= ?
-            )
-            WHERE rn = 1
-        """, (user_id, start_date, end_date))
-        
-        result = cursor.fetchone()
-        if result:
-            insights['largest_transaction'] = {
-                'amount': result['amount'],
-                'description': result['description'],
-                'category': result['category_name'],
-                'date': result['date'],
-                'type': result['type']
-            }
-        
-        # Top spending categories
-        cursor.execute("""
-            SELECT c.name as category_name, c.icon, SUM(t.amount) as total_amount
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            WHERE t.user_id = ? AND t.type = 'expense' 
-            AND t.date >= ? AND t.date <= ?
-            GROUP BY c.id, c.name, c.icon
-            ORDER BY total_amount DESC
-            LIMIT 5
-        """, (user_id, start_date, end_date))
-        
-        insights['top_categories'] = cursor.fetchall()
-        
-        # Savings rate calculation
-        cursor.execute("""
-            SELECT 
-                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
-                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expense
-            FROM transactions
-            WHERE user_id = ? AND date >= ? AND date <= ?
-        """, (user_id, start_date, end_date))
-        
-        result = cursor.fetchone()
-        total_income = result['total_income'] or 0
-        total_expense = result['total_expense'] or 0
-        
-        if total_income > 0:
-            savings_rate = ((total_income - total_expense) / total_income) * 100
-            insights['savings_rate'] = round(savings_rate, 1)
-        else:
-            insights['savings_rate'] = 0
-            
-        insights['total_income'] = total_income
-        insights['total_expense'] = total_expense
-        insights['net_savings'] = total_income - total_expense
-        
-        # Spending trends
-        cursor.execute("""
-            SELECT 
-                strftime('%Y-%m', date) as month,
-                SUM(amount) as monthly_spending
-            FROM transactions
-            WHERE user_id = ? AND type = 'expense' 
-            AND date >= date('now', '-6 months')
-            GROUP BY strftime('%Y-%m', date)
-            ORDER BY month
-        """, (user_id,))
-        
-        monthly_data = cursor.fetchall()
-        if len(monthly_data) >= 2:
-            recent_spending = monthly_data[-1]['monthly_spending']
-            previous_spending = monthly_data[-2]['monthly_spending']
-            
-            if previous_spending > 0:
-                trend_percentage = ((recent_spending - previous_spending) / previous_spending) * 100
-                insights['spending_trend'] = {
-                    'direction': 'increasing' if trend_percentage > 0 else 'decreasing',
-                    'percentage': abs(round(trend_percentage, 1))
-                }
-            else:
-                insights['spending_trend'] = {'direction': 'stable', 'percentage': 0}
-        else:
-            insights['spending_trend'] = {'direction': 'stable', 'percentage': 0}
-        
-        return insights
-        
-    except sqlite3.Error as e:
-        logger.error(f"Error getting transaction insights: {e}")
+        logger.error(f"Get transaction summary error: {e}")
         return {}
     finally:
         conn.close()
 
-def get_category_breakdown(user_id: int, start_date: str, end_date: str) -> List[sqlite3.Row]:
-    """Get category breakdown for charts."""
+# Budget Management Functions
+def create_budget(user_id: int, category_id: int, amount: float, 
+                 period: str = 'monthly', start_date: str = None) -> Optional[int]:
+    """Create a new budget"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT 
-                c.name as category_name,
-                c.type as category_type,
-                c.icon as category_icon,
-                c.color as category_color,
-                SUM(t.amount) as total_amount
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            WHERE t.user_id = ? AND t.date >= ? AND t.date <= ?
-            GROUP BY c.id, c.name, c.type, c.icon, c.color
-            HAVING total_amount > 0
-            ORDER BY total_amount DESC
-        """, (user_id, start_date, end_date))
+        if not start_date:
+            start_date = datetime.now().strftime('%Y-%m-%d')
         
-        return cursor.fetchall()
+        if is_postgres():
+            cursor.execute(f"""
+                INSERT INTO budgets (user_id, category_id, amount, period, start_date) 
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}) 
+                RETURNING id
+            """, (user_id, category_id, amount, period, start_date))
+            
+            budget_id = cursor.fetchone()['id']
+        else:
+            cursor.execute(f"""
+                INSERT INTO budgets (user_id, category_id, amount, period, start_date) 
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (user_id, category_id, amount, period, start_date))
+            
+            budget_id = cursor.lastrowid
         
-    except sqlite3.Error as e:
-        logger.error(f"Error getting category breakdown: {e}")
+        conn.commit()
+        logger.info(f"Budget created successfully: ID {budget_id}")
+        return budget_id
+        
+    except Exception as e:
+        logger.error(f"Create budget error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_budgets(user_id: int, is_active: bool = True) -> List[Dict[str, Any]]:
+    """Get user budgets with spending information"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        # Get current date for period calculations
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        
+        cursor.execute(f"""
+            SELECT b.id, b.user_id, b.category_id, b.amount as budget_amount, 
+                   b.period, b.start_date, b.end_date, b.is_active, b.alert_threshold,
+                   b.created_at, b.updated_at,
+                   c.name as category_name, c.icon as category_icon, c.color as category_color,
+                   COALESCE(SUM(t.amount), 0) as actual_spent
+            FROM budgets b
+            JOIN categories c ON b.category_id = c.id
+            LEFT JOIN transactions t ON (
+                t.user_id = b.user_id 
+                AND t.category_id = b.category_id 
+                AND t.type = 'expense'
+                AND t.date >= b.start_date
+                AND (b.end_date IS NULL OR t.date <= b.end_date)
+            )
+            WHERE b.user_id = {placeholder} AND b.is_active = {placeholder}
+            GROUP BY b.id, b.user_id, b.category_id, b.amount, b.period, b.start_date, 
+                     b.end_date, b.is_active, b.alert_threshold, b.created_at, b.updated_at,
+                     c.name, c.icon, c.color
+            ORDER BY b.created_at DESC
+        """, (user_id, is_active))
+        
+        return [dict(row) for row in cursor.fetchall()]
+        
+    except Exception as e:
+        logger.error(f"Get budgets error: {e}")
         return []
     finally:
         conn.close()
 
-def get_income_expense_trends(user_id: int, months: int = 6) -> List[sqlite3.Row]:
-    """Get income and expense trends over months."""
+def delete_budget(user_id: int, budget_id: int) -> bool:
+    """Delete a budget"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT 
-                strftime('%Y-%m', date) as month,
-                type,
-                SUM(amount) as total
-            FROM transactions
-            WHERE user_id = ? 
-            AND date >= date('now', '-{} months')
-            GROUP BY strftime('%Y-%m', date), type
-            ORDER BY month
-        """.format(months), (user_id,))
+        cursor.execute(f"""
+            DELETE FROM budgets 
+            WHERE id = {placeholder} AND user_id = {placeholder}
+        """, (budget_id, user_id))
         
-        return cursor.fetchall()
+        conn.commit()
+        return cursor.rowcount > 0
         
-    except sqlite3.Error as e:
-        logger.error(f"Error getting income expense trends: {e}")
-        return []
+    except Exception as e:
+        logger.error(f"Delete budget error: {e}")
+        return False
     finally:
         conn.close()
 
-def get_monthly_summary(user_id: int, year: int, month: int) -> Dict[str, float]:
-    """Get monthly summary for dashboard stats."""
+# Analytics and Insights Functions
+def get_monthly_trends(user_id: int, months: int = 6) -> Dict[str, Any]:
+    """Get monthly income and expense trends"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        # Format month to have leading zero if needed
-        month_str = f"{year}-{month:02d}"
+        # Calculate start date
+        start_date = (datetime.now() - timedelta(days=months * 30)).strftime('%Y-%m-%d')
         
-        cursor.execute("""
-            SELECT 
-                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
-            FROM transactions
-            WHERE user_id = ? AND strftime('%Y-%m', date) = ?
-        """, (user_id, month_str))
+        if is_postgres():
+            cursor.execute(f"""
+                SELECT 
+                    TO_CHAR(date, 'YYYY-MM') as month,
+                    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+                    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+                FROM transactions 
+                WHERE user_id = {placeholder} AND date >= {placeholder}
+                GROUP BY TO_CHAR(date, 'YYYY-MM')
+                ORDER BY month
+            """, (user_id, start_date))
+        else:
+            cursor.execute(f"""
+                SELECT 
+                    strftime('%Y-%m', date) as month,
+                    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+                    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+                FROM transactions 
+                WHERE user_id = {placeholder} AND date >= {placeholder}
+                GROUP BY strftime('%Y-%m', date)
+                ORDER BY month
+            """, (user_id, start_date))
         
-        result = cursor.fetchone()
-        
-        income = result['income'] or 0
-        expense = result['expense'] or 0
+        results = cursor.fetchall()
         
         return {
-            'income': income,
-            'expense': expense,
-            'balance': income - expense
+            'months': [row[0] for row in results],
+            'income': [float(row[1]) for row in results],
+            'expenses': [float(row[2]) for row in results]
         }
         
-    except sqlite3.Error as e:
-        logger.error(f"Error getting monthly summary: {e}")
-        return {'income': 0, 'expense': 0, 'balance': 0}
+    except Exception as e:
+        logger.error(f"Get monthly trends error: {e}")
+        return {'months': [], 'income': [], 'expenses': []}
     finally:
         conn.close()
 
-# Category Functions
-def get_categories(category_type: str = None) -> List[sqlite3.Row]:
-    """Get categories, optionally filtered by type."""
+def get_category_breakdown(user_id: int, transaction_type: str = 'expense', 
+                          start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Get spending breakdown by category"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        if category_type:
-            cursor.execute("""
-                SELECT * FROM categories 
-                WHERE type = ? 
-                ORDER BY name
-            """, (category_type,))
-        else:
-            cursor.execute("""
-                SELECT * FROM categories 
-                ORDER BY type, name
-            """)
+        # Build query conditions
+        where_conditions = [f"t.user_id = {placeholder}", f"t.type = {placeholder}"]
+        params = [user_id, transaction_type]
         
-        return cursor.fetchall()
+        if start_date:
+            where_conditions.append(f"t.date >= {placeholder}")
+            params.append(start_date)
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching categories: {e}")
+        if end_date:
+            where_conditions.append(f"t.date <= {placeholder}")
+            params.append(end_date)
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        cursor.execute(f"""
+            SELECT 
+                c.name as category,
+                c.icon,
+                c.color,
+                SUM(t.amount) as amount,
+                COUNT(t.id) as transaction_count
+            FROM transactions t
+            JOIN categories c ON t.category_id = c.id
+            WHERE {where_clause}
+            GROUP BY c.id, c.name, c.icon, c.color
+            ORDER BY amount DESC
+        """, params)
+        
+        return [dict(row) for row in cursor.fetchall()]
+        
+    except Exception as e:
+        logger.error(f"Get category breakdown error: {e}")
         return []
     finally:
         conn.close()
 
-def get_category_by_id(category_id: int) -> Optional[sqlite3.Row]:
-    """Get a category by ID."""
+def search_transactions(user_id: int, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search transactions by description or category name"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT * FROM categories WHERE id = ?
-        """, (category_id,))
+        search_term = f"%{query}%"
         
-        return cursor.fetchone()
+        if is_postgres():
+            cursor.execute(f"""
+                SELECT t.id, t.amount, t.type, t.description, t.date,
+                       c.name as category_name, c.icon as category_icon, c.color as category_color
+                FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                WHERE t.user_id = {placeholder} 
+                AND (t.description ILIKE {placeholder} OR c.name ILIKE {placeholder})
+                ORDER BY t.date DESC
+                LIMIT {placeholder}
+            """, (user_id, search_term, search_term, limit))
+        else:
+            cursor.execute(f"""
+                SELECT t.id, t.amount, t.type, t.description, t.date,
+                       c.name as category_name, c.icon as category_icon, c.color as category_color
+                FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                WHERE t.user_id = {placeholder} 
+                AND (t.description LIKE {placeholder} OR c.name LIKE {placeholder})
+                ORDER BY t.date DESC
+                LIMIT {placeholder}
+            """, (user_id, search_term, search_term, limit))
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching category: {e}")
-        return None
-    finally:
-        conn.close()
-
-def get_transaction_by_id(transaction_id: int, user_id: int) -> Optional[sqlite3.Row]:
-    """Get a transaction by ID (user must own it)."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        return [dict(row) for row in cursor.fetchall()]
         
-        cursor.execute("""
-            SELECT t.*, c.name as category_name
-            FROM transactions t
-            JOIN categories c ON t.category_id = c.id
-            WHERE t.id = ? AND t.user_id = ?
-        """, (transaction_id, user_id))
-        
-        return cursor.fetchone()
-        
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching transaction: {e}")
-        return None
+    except Exception as e:
+        logger.error(f"Search transactions error: {e}")
+        return []
     finally:
         conn.close()
 
 # User Preferences Functions
-def get_user_preferences(user_id: int) -> Optional[sqlite3.Row]:
-    """Get user preferences."""
+def get_user_preferences(user_id: int) -> Dict[str, Any]:
+    """Get user preferences"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT * FROM user_preferences WHERE user_id = ?
+        cursor.execute(f"""
+            SELECT currency, currency_symbol, date_format, theme, default_view,
+                   timezone, language, notifications_enabled, email_notifications,
+                   budget_alerts, export_format, decimal_places
+            FROM user_preferences 
+            WHERE user_id = {placeholder}
         """, (user_id,))
         
-        return cursor.fetchone()
+        result = cursor.fetchone()
+        return dict(result) if result else {}
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching user preferences: {e}")
-        return None
+    except Exception as e:
+        logger.error(f"Get user preferences error: {e}")
+        return {}
     finally:
         conn.close()
 
 def update_user_preferences(user_id: int, preferences: Dict[str, Any]) -> bool:
-    """Update user preferences."""
+    """Update user preferences"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        # Build dynamic update query
-        set_clauses = []
-        values = []
+        # Build update query
+        valid_fields = [
+            'currency', 'currency_symbol', 'date_format', 'theme', 'default_view',
+            'timezone', 'language', 'notifications_enabled', 'email_notifications',
+            'budget_alerts', 'export_format', 'decimal_places'
+        ]
         
-        allowed_fields = ['currency', 'date_format', 'theme', 'default_view', 
-                         'timezone', 'language', 'notifications_enabled', 'export_format']
+        updates = []
+        params = []
         
         for field, value in preferences.items():
-            if field in allowed_fields:
-                set_clauses.append(f"{field} = ?")
-                values.append(value)
+            if field in valid_fields and value is not None:
+                updates.append(f"{field} = {placeholder}")
+                params.append(value)
         
-        if not set_clauses:
+        if not updates:
             return False
         
-        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-        values.append(user_id)
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(user_id)
         
         query = f"""
             UPDATE user_preferences 
-            SET {', '.join(set_clauses)} 
-            WHERE user_id = ?
+            SET {', '.join(updates)}
+            WHERE user_id = {placeholder}
         """
         
-        cursor.execute(query, values)
+        cursor.execute(query, params)
         conn.commit()
         
         return cursor.rowcount > 0
         
-    except sqlite3.Error as e:
-        logger.error(f"Error updating user preferences: {e}")
+    except Exception as e:
+        logger.error(f"Update user preferences error: {e}")
         return False
     finally:
         conn.close()
 
 # Onboarding Functions
-def get_user_onboarding(user_id: int) -> Optional[sqlite3.Row]:
-    """Get user onboarding status."""
+def get_user_onboarding(user_id: int) -> Dict[str, Any]:
+    """Get user onboarding status"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        cursor.execute("""
-            SELECT * FROM user_onboarding WHERE user_id = ?
+        cursor.execute(f"""
+            SELECT tour_completed, sample_data_added, first_transaction_added,
+                   first_budget_set, dashboard_visited, reports_visited,
+                   settings_visited, export_used, search_used, checklist_completed,
+                   completion_date
+            FROM user_onboarding 
+            WHERE user_id = {placeholder}
         """, (user_id,))
         
-        return cursor.fetchone()
+        result = cursor.fetchone()
+        return dict(result) if result else {}
         
-    except sqlite3.Error as e:
-        logger.error(f"Error fetching user onboarding: {e}")
-        return None
+    except Exception as e:
+        logger.error(f"Get user onboarding error: {e}")
+        return {}
     finally:
         conn.close()
 
-def update_onboarding_progress(user_id: int, progress: Dict[str, bool]) -> bool:
-    """Update user onboarding progress."""
+def update_user_onboarding(user_id: int, updates: Dict[str, Any]) -> bool:
+    """Update user onboarding progress"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        placeholder = get_placeholder()
         
-        set_clauses = []
-        values = []
+        valid_fields = [
+            'tour_completed', 'sample_data_added', 'first_transaction_added',
+            'first_budget_set', 'dashboard_visited', 'reports_visited',
+            'settings_visited', 'export_used', 'search_used', 'checklist_completed'
+        ]
         
-        allowed_fields = ['tour_completed', 'sample_data_added', 'first_transaction_added',
-                         'first_budget_set', 'dashboard_visited', 'reports_visited',
-                         'settings_visited', 'export_used', 'search_used', 'checklist_completed']
+        update_fields = []
+        params = []
         
-        for field, value in progress.items():
-            if field in allowed_fields:
-                set_clauses.append(f"{field} = ?")
-                values.append(value)
+        for field, value in updates.items():
+            if field in valid_fields and value is not None:
+                update_fields.append(f"{field} = {placeholder}")
+                params.append(value)
         
-        if not set_clauses:
+        if not update_fields:
             return False
         
-        values.append(user_id)
+        # Check if checklist is completed
+        if updates.get('checklist_completed'):
+            update_fields.append("completion_date = CURRENT_TIMESTAMP")
+        
+        params.append(user_id)
         
         query = f"""
             UPDATE user_onboarding 
-            SET {', '.join(set_clauses)}
-            WHERE user_id = ?
+            SET {', '.join(update_fields)}
+            WHERE user_id = {placeholder}
         """
         
-        cursor.execute(query, values)
+        cursor.execute(query, params)
         conn.commit()
         
         return cursor.rowcount > 0
         
-    except sqlite3.Error as e:
-        logger.error(f"Error updating onboarding progress: {e}")
+    except Exception as e:
+        logger.error(f"Update user onboarding error: {e}")
         return False
     finally:
         conn.close()
 
-def add_sample_data(user_id: int) -> bool:
-    """Add sample transactions for new users."""
+# Export Functions
+def export_transactions_csv(user_id: int, start_date: Optional[str] = None, 
+                           end_date: Optional[str] = None) -> str:
+    """Export user transactions as CSV"""
+    try:
+        # Get transactions
+        filters = {}
+        if start_date:
+            filters['start_date'] = start_date
+        if end_date:
+            filters['end_date'] = end_date
+        
+        transactions = get_transactions(user_id, limit=10000, filters=filters)
+        
+        # Create CSV
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'Date', 'Category', 'Type', 'Description', 'Amount'
+        ])
+        
+        # Write transactions
+        for transaction in transactions:
+            writer.writerow([
+                transaction['date'],
+                transaction['category_name'],
+                transaction['type'].title(),
+                transaction['description'] or '',
+                f"{transaction['amount']:.2f}"
+            ])
+        
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Export transactions CSV error: {e}")
+        return ""
+
+# Database utilities
+def get_database_stats() -> Dict[str, int]:
+    """Get database statistics"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get some category IDs
-        cursor.execute("SELECT id, type FROM categories WHERE is_default = TRUE LIMIT 15")
-        categories = cursor.fetchall()
+        stats = {}
         
-        if not categories:
-            return False
+        # Count records in each table
+        tables = ['users', 'transactions', 'categories', 'budgets']
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            stats[table] = cursor.fetchone()[0]
         
-        # Create category lookup
-        income_categories = [cat for cat in categories if cat['type'] == 'income']
-        expense_categories = [cat for cat in categories if cat['type'] == 'expense']
+        return stats
         
-        # Sample transactions with realistic data
-        sample_transactions = [
-            ('2025-09-25', income_categories[0]['id'] if income_categories else 1, 3000.00, 'income', 'Monthly Salary'),
-            ('2025-09-24', expense_categories[0]['id'] if expense_categories else 5, 45.50, 'expense', 'Grocery shopping at Whole Foods'),
-            ('2025-09-23', expense_categories[1]['id'] if len(expense_categories) > 1 else 6, 25.00, 'expense', 'Gas station fill-up'),
-            ('2025-09-22', expense_categories[2]['id'] if len(expense_categories) > 2 else 7, 1200.00, 'expense', 'Monthly rent payment'),
-            ('2025-09-21', expense_categories[3]['id'] if len(expense_categories) > 3 else 8, 75.00, 'expense', 'Doctor visit copay'),
-            ('2025-09-20', expense_categories[4]['id'] if len(expense_categories) > 4 else 9, 35.00, 'expense', 'Movie night with friends'),
-            ('2025-09-19', income_categories[1]['id'] if len(income_categories) > 1 else 2, 500.00, 'income', 'Freelance web design project'),
-            ('2025-09-18', expense_categories[5]['id'] if len(expense_categories) > 5 else 10, 120.00, 'expense', 'Online shopping - clothes'),
-            ('2025-09-17', expense_categories[0]['id'] if expense_categories else 5, 28.75, 'expense', 'Coffee shop and lunch'),
-            ('2025-09-16', expense_categories[6]['id'] if len(expense_categories) > 6 else 11, 85.00, 'expense', 'Gym membership renewal'),
-        ]
-        
-        # Insert sample transactions
-        for date, category_id, amount, trans_type, description in sample_transactions:
-            cursor.execute("""
-                INSERT INTO transactions (user_id, category_id, amount, type, description, date)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (user_id, category_id, amount, trans_type, description, date))
-        
-        # Update onboarding progress
-        cursor.execute("""
-            UPDATE user_onboarding 
-            SET sample_data_added = TRUE 
-            WHERE user_id = ?
-        """, (user_id,))
-        
-        conn.commit()
-        logger.info(f"Sample data added for user {user_id}")
-        return True
-        
-    except sqlite3.Error as e:
-        logger.error(f"Error adding sample data: {e}")
-        return False
+    except Exception as e:
+        logger.error(f"Get database stats error: {e}")
+        return {}
     finally:
         conn.close()
 
-# Initialize database on module import
+def vacuum_database():
+    """Optimize database (SQLite only)"""
+    if is_postgres():
+        logger.info("VACUUM not needed for PostgreSQL")
+        return
+    
+    try:
+        conn = get_db_connection()
+        conn.execute("VACUUM")
+        conn.close()
+        logger.info("Database vacuumed successfully")
+        
+    except Exception as e:
+        logger.error(f"Database vacuum error: {e}")
+
+# Test database connection
+def test_connection() -> bool:
+    """Test database connection"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        conn.close()
+        logger.info("Database connection test successful")
+        return result is not None
+        
+    except Exception as e:
+        logger.error(f"Database connection test failed: {e}")
+        return False
+
 if __name__ == "__main__":
-    init_db()
-    seed_default_categories()
-    print("Enhanced database initialized and seeded successfully!")
+    logger.info("Testing database connection and initialization...")
+    
+    if test_connection():
+        logger.info("✅ Database connection successful")
+        
+        try:
+            init_db()
+            logger.info("✅ Database initialized successfully")
+            
+            seed_default_categories()
+            logger.info("✅ Default categories seeded")
+            
+            stats = get_database_stats()
+            logger.info(f"✅ Database stats: {stats}")
+            
+        except Exception as e:
+            logger.error(f"❌ Database setup failed: {e}")
+    else:
+        logger.error("❌ Database connection failed")
