@@ -1,6 +1,6 @@
 {
   "name": "Personal Finance Manager Pro",
-  "short_name": "Finance Pro",
+  "short_name": "Finance Pro", 
   "description": "Advanced personal finance management with intelligent budgeting and analytics",
   "start_url": "/",
   "display": "standalone",
@@ -13,71 +13,16 @@
   "categories": ["finance", "productivity", "business"],
   "icons": [
     {
-      "src": "/static/images/logo.png",
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0iIzRGOEE4QiIgcng9IjE2Ii8+CiAgPHRleHQgeD0iMTI4IiB5PSIxNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IndoaXRlIiBmb250LXNpemU9IjI0IiBmb250LWZhbWlseT0iQXJpYWwiPvCfkrAgRmluYW5jZSBQcm88L3RleHQ+Cjwvc3ZnPg==",
       "sizes": "256x256",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/static/images/logo-144.png",
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQ0IiBoZWlnaHQ9IjE0NCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTQ0IiBoZWlnaHQ9IjE0NCIgZmlsbD0iIzRGOEE4QiIgcng9IjEyIi8+CiAgPHRleHQgeD0iNzIiIHk9Ijg1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1zaXplPSI0OCIgZm9udC1mYW1pbHk9IkFyaWFsIj7wn5KwPC90ZXh0Pgo8L3N2Zz4=",
       "sizes": "144x144",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/static/images/favicon.ico",
-      "sizes": "32x32",
-      "type": "image/x-icon"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Add Transaction",
-      "short_name": "Add Transaction",
-      "description": "Quickly add a new transaction",
-      "url": "/dashboard?action=add-transaction",
-      "icons": [
-        {
-          "src": "/static/images/logo-144.png",
-          "sizes": "144x144",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "View Reports",
-      "short_name": "Reports", 
-      "description": "View financial reports and analytics",
-      "url": "/reports",
-      "icons": [
-        {
-          "src": "/static/images/logo-144.png",
-          "sizes": "144x144",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Set Budget",
-      "short_name": "Budget",
-      "description": "Create or manage budgets", 
-      "url": "/budgets",
-      "icons": [
-        {
-          "src": "/static/images/logo-144.png",
-          "sizes": "144x144", 
-          "type": "image/png"
-        }
-      ]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/static/images/logo.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Personal Finance Manager Pro dashboard"
     }
   ]
 }
