@@ -19,3 +19,13 @@ class Config:
     
     # Use Render's PORT environment variable
     PORT = int(os.environ.get('PORT', 5000))
+# Add this to config.py
+class FreeConfig(Config):
+    """Free deployment configuration"""
+    # Force SQLite for free tier
+    DATABASE_URL = None
+    DATABASE_PATH = '/opt/render/project/src/data/finance.db'
+    
+    # Free tier settings
+    FORCE_HTTPS = False  # Free tier doesn't get custom SSL
+    SESSION_COOKIE_SECURE = False
