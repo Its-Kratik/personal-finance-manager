@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 """
-Personal Finance Manager Pro - Main Application Controller
-==========================================================
-
-A comprehensive, secure personal finance management application with:
-- Advanced transaction tracking and categorization
-- Budget monitoring with visual alerts
-- Real-time analytics and insights
-- Data export capabilities
-- Professional security features
-- Mobile-responsive design
-
-Version: 1.0.0
-Author: Finance Manager Team
-License: MIT
+Personal Finance Manager Pro - Main Application Controller (Render Compatible)
 """
 
 import os
@@ -39,20 +26,58 @@ import html
 import model
 from config import Config
 
-# Configure logging for production
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/app.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# ✅ RENDER-OPTIMIZED LOGGING CONFIGURATION
+def setup_logging():
+    """Setup logging for Render deployment"""
+    
+    # Render captures stdout/stderr automatically, so we only log to console
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()  # Only console output for Render
+        ],
+        force=True  # Override any existing configuration
+    )
+    
+    # Set specific loggers
+    logger = logging.getLogger(__name__)
+    
+    # Suppress noisy third-party logs in production
+    if os.environ.get('FLASK_ENV') == 'production':
+        logging.getLogger('werkzeug').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
+    logger.info("Logging configured for Render deployment")
+    return logger
+
+# Initialize logging
+logger = setup_logging()
 
 # Initialize Flask application
 app = Flask(__name__)
-app.config.from_object(Config)
+
+# Render-specific configuration
+class RenderConfig(Config):
+    """Configuration optimized for Render deployment"""
+    
+    # Render sets PORT automatically
+    PORT = int(os.environ.get('PORT', 5000))
+    
+    # Render handles HTTPS automatically
+    FORCE_HTTPS = os.environ.get('RENDER_EXTERNAL_URL') is not None
+    
+    # Secure cookies in production
+    SESSION_COOKIE_SECURE = bool(os.environ.get('RENDER_EXTERNAL_URL'))
+    
+    # Use Redis if available, otherwise memory
+    RATE_LIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'memory://')
+
+# Apply Render configuration
+app.config.from_object(RenderConfig)
 
 # Security Headers with Talisman
 csp = {
@@ -1023,12 +1048,18 @@ def settings():
     model.update_onboarding_progress(session['user_id'], {'settings_visited': True})
     return render_template('index.html')
 
+# Update the main execution block for Render:
 if __name__ == '__main__':
+    # Get port from environment (Render sets this)
     port = int(os.environ.get('PORT', 5000))
+    
+    # Render handles production/development detection
     debug = os.environ.get('FLASK_ENV') == 'development'
     
+    logger.info(f"Starting Finance Manager Pro on port {port}")
+    
     app.run(
-        host='0.0.0.0',
+        host='0.0.0.0',  # Required for Render
         port=port,
         debug=debug,
         threaded=True
