@@ -215,18 +215,24 @@ def internal_error(error):
         return jsonify({'error': 'Internal server error', 'message': 'Something went wrong'}), 500
     return render_template('index.html'), 500
 
-# Database Initialization
-@app.before_first_request
+# Database initialization flag
+_initialized = False
+
+@app.before_request
 def initialize_application():
-    """Initialize database and application"""
-    try:
-        logger.info("Initializing application...")
-        model.init_db()
-        model.seed_default_categories()
-        logger.info("Application initialized successfully")
-    except Exception as e:
-        logger.critical(f"Application initialization failed: {str(e)}")
-        raise
+    """Initialize database and application (once)"""
+    global _initialized
+    if not _initialized:
+        try:
+            logger.info("Initializing application...")
+            model.init_db()
+            model.seed_default_categories()
+            logger.info("Application initialized successfully")
+            _initialized = True
+        except Exception as e:
+            logger.critical(f"Application initialization failed: {str(e)}")
+            raise
+
 
 # Security Headers
 @app.after_request
