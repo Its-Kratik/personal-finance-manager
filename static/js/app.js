@@ -1652,26 +1652,578 @@ class FinanceApp {
         }
     }
 
-    // Additional methods for loading transactions, budgets, reports, settings...
-    // [These would be implemented similarly to loadDashboardData]
-
+    /**
+     * Load transactions page data
+     */
     async loadTransactions(filters = {}) {
-        // Implementation for loading transactions page
+        try {
+            this.showLoading('transactions-loading');
+            
+            // Load transactions with filters
+            const params = new URLSearchParams();
+            Object.keys(filters).forEach(key => {
+                if (filters[key] && filters[key] !== 'all') {
+                    params.append(key, filters[key]);
+                }
+            });
+            
+            const transactionsResponse = await this.apiRequest(`/transactions?${params.toString()}`);
+            this.updateTransactionsTable(transactionsResponse.transactions || []);
+            this.updateTransactionsSummary(transactionsResponse.summary || {});
+            
+            // Load categories for filter dropdown
+            const categoriesResponse = await this.apiRequest('/api/categories');
+            this.populateCategoryFilter(categoriesResponse.categories || []);
+            
+            // Update pagination if needed
+            this.updateTransactionsPagination(transactionsResponse.pagination || {});
+            
+        } catch (error) {
+            console.error('Failed to load transactions:', error);
+            this.showError('Failed to load transactions');
+            this.showTransactionsEmpty();
+        } finally {
+            this.hideLoading('transactions-loading');
+        }
     }
 
+    /**
+     * Update transactions table
+     */
+    updateTransactionsTable(transactions) {
+        const tbody = document.getElementById('transactions-tbody');
+        const emptyState = document.getElementById('transactions-empty');
+        
+        if (!tbody) return;
+
+        if (!transactions || transactions.length === 0) {
+            tbody.innerHTML = '';
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+
+        if (emptyState) emptyState.style.display = 'none';
+
+        const transactionRows = transactions.map(transaction => `
+            <tr data-id="${transaction.id}">
+                <td>${formatDate(transaction.date)}</td>
+                <td>
+                    <div class="category-cell">
+                        <span class="category-icon" style="background: ${transaction.category_color || '#4F8A8B'}">
+                            ${transaction.category_icon || '💳'}
+                        </span>
+                        ${transaction.category_name}
+                    </div>
+                </td>
+                <td>${transaction.description || 'No description'}</td>
+                <td>
+                    <span class="transaction-type ${transaction.type}">
+                        ${transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                    </span>
+                </td>
+                <td class="amount ${transaction.type}">
+                    ${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}
+                </td>
+                <td class="actions-col">
+                    <div class="table-actions">
+                        <button class="table-action-btn" onclick="app.editTransaction(${transaction.id})" 
+                                aria-label="Edit transaction">
+                            ✏️
+                        </button>
+                        <button class="table-action-btn" onclick="app.deleteTransaction(${transaction.id})" 
+                                aria-label="Delete transaction">
+                            🗑️
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.innerHTML = transactionRows;
+    }
+
+    /**
+     * Update transactions summary
+     */
+    updateTransactionsSummary(summary) {
+        const elements = {
+            total: document.getElementById('transactions-total'),
+            income: document.getElementById('transactions-income'),
+            expense: document.getElementById('transactions-expense'),
+            net: document.getElementById('transactions-net')
+        };
+
+        if (elements.total) {
+            elements.total.textContent = `${summary.count || 0} transactions`;
+        }
+        if (elements.income) {
+            elements.income.textContent = formatCurrency(summary.total_income || 0);
+        }
+        if (elements.expense) {
+            elements.expense.textContent = formatCurrency(summary.total_expense || 0);
+        }
+        if (elements.net) {
+            const net = (summary.total_income || 0) - (summary.total_expense || 0);
+            elements.net.textContent = formatCurrency(net);
+            elements.net.className = `summary-value ${net >= 0 ? 'income' : 'expense'}`;
+        }
+    }
+
+    /**
+     * Populate category filter dropdown
+     */
+    populateCategoryFilter(categories) {
+        const categoryFilter = document.getElementById('transaction-category-filter');
+        if (!categoryFilter) return;
+
+        const options = categories.map(category => 
+            `<option value="${category.id}">${category.icon} ${category.name}</option>`
+        ).join('');
+
+        categoryFilter.innerHTML = '<option value="all">All Categories</option>' + options;
+    }
+
+    /**
+     * Load budgets page data
+     */
     async loadBudgets() {
-        // Implementation for loading budgets page
+        try {
+            this.showLoading('budgets-loading');
+            
+            // Load budgets
+            const budgetsResponse = await this.apiRequest('/api/budgets');
+            this.updateBudgetsGrid(budgetsResponse.budgets || []);
+            
+            // Load budget performance
+            const performanceResponse = await this.apiRequest('/api/budgets/performance');
+            this.updateBudgetOverview(performanceResponse.performance || []);
+            
+            // Load categories for budget creation
+            const categoriesResponse = await this.apiRequest('/api/categories?type=expense');
+            this.populateBudgetCategories(categoriesResponse.categories || []);
+            
+        } catch (error) {
+            console.error('Failed to load budgets:', error);
+            this.showError('Failed to load budgets');
+            this.showBudgetsEmpty();
+        } finally {
+            this.hideLoading('budgets-loading');
+        }
     }
 
+    /**
+     * Update budgets grid
+     */
+    updateBudgetsGrid(budgets) {
+        const grid = document.getElementById('budgets-grid');
+        const emptyState = document.getElementById('budgets-empty');
+        
+        if (!grid) return;
+
+        if (!budgets || budgets.length === 0) {
+            grid.innerHTML = '';
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+
+        if (emptyState) emptyState.style.display = 'none';
+
+        const budgetCards = budgets.map(budget => {
+            const spent = budget.actual_spent || 0;
+            const percentage = budget.budget_amount > 0 ? (spent / budget.budget_amount) * 100 : 0;
+            const remaining = budget.budget_amount - spent;
+            
+            let status = 'safe';
+            if (percentage >= 100) status = 'danger';
+            else if (percentage >= 80) status = 'warning';
+            
+            return `
+                <div class="budget-card" data-id="${budget.id}">
+                    <div class="budget-header">
+                        <div class="budget-category">
+                            <div class="budget-category-icon" style="background: ${budget.category_color || '#4F8A8B'}">
+                                ${budget.category_icon || '🎯'}
+                            </div>
+                            <div>
+                                <div class="budget-category-name">${budget.category_name}</div>
+                                <div class="budget-period">${budget.period} budget</div>
+                            </div>
+                        </div>
+                        <div class="budget-actions">
+                            <button class="table-action-btn" onclick="app.editBudget(${budget.id})" 
+                                    aria-label="Edit budget">
+                                ✏️
+                            </button>
+                            <button class="table-action-btn" onclick="app.deleteBudget(${budget.id})" 
+                                    aria-label="Delete budget">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    <div class="budget-amount">${formatCurrency(budget.budget_amount)}</div>
+                    <div class="budget-progress">
+                        <div class="budget-progress-bar">
+                            <div class="budget-progress-fill ${status}" style="width: ${Math.min(percentage, 100)}%"></div>
+                        </div>
+                        <div class="budget-stats">
+                            <span class="budget-spent">Spent: ${formatCurrency(spent)}</span>
+                            <span class="budget-remaining ${status}">
+                                ${remaining >= 0 ? 'Left: ' + formatCurrency(remaining) : 'Over: ' + formatCurrency(Math.abs(remaining))}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="budget-details">
+                        <div class="budget-detail-item">
+                            <span class="budget-detail-label">Progress:</span>
+                            <span class="budget-detail-value">${percentage.toFixed(1)}%</span>
+                        </div>
+                        <div class="budget-detail-item">
+                            <span class="budget-detail-label">Status:</span>
+                            <span class="budget-detail-value ${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        grid.innerHTML = budgetCards;
+    }
+    /**
+     * Update budget overview cards
+     */
+    updateBudgetOverview(performance) {
+        const totalBudgets = performance.length;
+        const totalBudgetAmount = performance.reduce((sum, item) => sum + item.budget_amount, 0);
+        const totalSpent = performance.reduce((sum, item) => sum + item.actual_spent, 0);
+        const remainingBudget = totalBudgetAmount - totalSpent;
+
+        const elements = {
+            totalBudgets: document.getElementById('total-budgets'),
+            totalBudgetAmount: document.getElementById('total-budget-amount'),
+            totalSpent: document.getElementById('total-spent'),
+            remainingBudget: document.getElementById('remaining-budget')
+        };
+
+        if (elements.totalBudgets) {
+            this.animateCounter(elements.totalBudgets, totalBudgets);
+        }
+        if (elements.totalBudgetAmount) {
+            elements.totalBudgetAmount.textContent = formatCurrency(totalBudgetAmount);
+        }
+        if (elements.totalSpent) {
+            elements.totalSpent.textContent = formatCurrency(totalSpent);
+        }
+        if (elements.remainingBudget) {
+            elements.remainingBudget.textContent = formatCurrency(remainingBudget);
+            elements.remainingBudget.className = `card-value ${remainingBudget >= 0 ? 'positive' : 'negative'}`;
+        }
+    }
+
+    /**
+     * Load reports page data
+     */
     async loadReports() {
-        // Implementation for loading reports page
+        try {
+            this.showLoading('reports-loading');
+            
+            // Get selected period
+            const period = document.getElementById('reports-period')?.value || 'this_month';
+            
+            // Load insights data
+            const insightsResponse = await this.apiRequest(`/api/insights?period=${period}`);
+            this.updateReportsInsights(insightsResponse.insights || {});
+            
+            // Load chart data for reports
+            const chartResponse = await this.apiRequest(`/api/chart-data?period=${period}`);
+            await this.updateReportsCharts(chartResponse);
+            
+            // Load detailed analysis
+            const analysisResponse = await this.apiRequest(`/api/analysis?period=${period}`);
+            this.updateDetailedAnalysis(analysisResponse.analysis || {});
+            
+        } catch (error) {
+            console.error('Failed to load reports:', error);
+            this.showError('Failed to load reports');
+        } finally {
+            this.hideLoading('reports-loading');
+        }
     }
 
+    /**
+     * Update reports insights
+     */
+    updateReportsInsights(insights) {
+        // Update income vs expenses comparison
+        const incomeElement = document.getElementById('insight-income');
+        const expenseElement = document.getElementById('insight-expense');
+        
+        if (incomeElement && expenseElement) {
+            incomeElement.textContent = formatCurrency(insights.total_income || 0);
+            expenseElement.textContent = formatCurrency(insights.total_expense || 0);
+            
+            // Update comparison bars
+            const maxAmount = Math.max(insights.total_income || 0, insights.total_expense || 0);
+            if (maxAmount > 0) {
+                const incomeFill = document.querySelector('.income-fill');
+                const expenseFill = document.querySelector('.expense-fill');
+                
+                if (incomeFill) {
+                    incomeFill.style.width = `${(insights.total_income / maxAmount) * 100}%`;
+                }
+                if (expenseFill) {
+                    expenseFill.style.width = `${(insights.total_expense / maxAmount) * 100}%`;
+                }
+            }
+        }
+
+        // Update savings rate
+        this.updateSavingsRate(insights.savings_rate || 0);
+        
+        // Update top spending category
+        this.updateTopSpendingCategory(insights.top_category || {});
+        
+        // Update spending trend
+        this.updateSpendingTrend(insights.spending_trend || {});
+    }
+
+    /**
+     * Update savings rate circle
+     */
+    updateSavingsRate(savingsRate) {
+        const savingsRatePath = document.getElementById('savings-rate-path');
+        const savingsRateText = document.getElementById('savings-rate-text');
+        const totalSaved = document.getElementById('total-saved');
+        
+        if (savingsRatePath) {
+            const circumference = 100; // Based on stroke-dasharray total
+            const offset = circumference - (savingsRate / 100) * circumference;
+            savingsRatePath.style.strokeDasharray = `${savingsRate}, ${circumference}`;
+        }
+        
+        if (savingsRateText) {
+            savingsRateText.textContent = `${savingsRate.toFixed(0)}%`;
+        }
+        
+        if (totalSaved) {
+            // This would need to be calculated based on actual savings data
+            totalSaved.textContent = formatCurrency(0);
+        }
+    }
+
+    /**
+     * Update reports charts
+     */
+    async updateReportsCharts(chartData) {
+        if (chartData.monthly_trends) {
+            await renderReportsTrendsChart(chartData.monthly_trends);
+        }
+        
+        if (chartData.category_breakdown) {
+            await renderCategoryChart(chartData.category_breakdown);
+        }
+    }
+
+    /**
+     * Load settings page data
+     */
     async loadSettings() {
-        // Implementation for loading settings page
+        try {
+            this.showLoading('settings-loading');
+            
+            // Load user preferences
+            const preferencesResponse = await this.apiRequest('/api/preferences');
+            this.populateSettingsForm(preferencesResponse.preferences || {});
+            
+            // Load user profile data
+            const profileResponse = await this.apiRequest('/api/profile');
+            this.populateProfileForm(profileResponse.profile || {});
+            
+            // Load account activity data
+            const activityResponse = await this.apiRequest('/api/account/activity');
+            this.updateAccountActivity(activityResponse.activity || {});
+            
+        } catch (error) {
+            console.error('Failed to load settings:', error);
+            this.showError('Failed to load settings');
+        } finally {
+            this.hideLoading('settings-loading');
+        }
     }
-}
 
+    /**
+     * Populate settings form with current preferences
+     */
+    populateSettingsForm(preferences) {
+        const formElements = {
+            theme: document.getElementById('theme-select'),
+            currency: document.getElementById('currency-select'),
+            dateFormat: document.getElementById('date-format-select'),
+            defaultView: document.getElementById('default-transaction-view'),
+            transactionsPerPage: document.getElementById('transactions-per-page')
+        };
+
+        Object.keys(formElements).forEach(key => {
+            const element = formElements[key];
+            const prefKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+            
+            if (element && preferences[prefKey]) {
+                element.value = preferences[prefKey];
+            }
+        });
+
+        // Handle checkboxes for notifications
+        const notificationCheckboxes = [
+            'budget-warnings',
+            'budget-exceeded',
+            'daily-summary',
+            'weekly-report',
+            'security-alerts',
+            'feature-updates'
+        ];
+
+        notificationCheckboxes.forEach(id => {
+            const checkbox = document.getElementById(id);
+            const prefKey = id.replace(/-/g, '_');
+            
+            if (checkbox && preferences[prefKey] !== undefined) {
+                checkbox.checked = preferences[prefKey];
+            }
+        });
+    }
+
+    /**
+     * Populate profile form
+     */
+    populateProfileForm(profile) {
+        const profileElements = {
+            username: document.getElementById('profile-username'),
+            email: document.getElementById('profile-email'),
+            firstName: document.getElementById('profile-first-name'),
+            lastName: document.getElementById('profile-last-name')
+        };
+
+        Object.keys(profileElements).forEach(key => {
+            const element = profileElements[key];
+            const profileKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+            
+            if (element && profile[profileKey]) {
+                element.value = profile[profileKey];
+            }
+        });
+    }
+
+    /**
+     * Update account activity information
+     */
+    updateAccountActivity(activity) {
+        const lastLogin = document.getElementById('last-login');
+        const accountCreated = document.getElementById('account-created');
+        
+        if (lastLogin && activity.last_login) {
+            lastLogin.textContent = formatDate(activity.last_login, 'medium');
+        }
+        
+        if (accountCreated && activity.created_at) {
+            accountCreated.textContent = formatDate(activity.created_at, 'medium');
+        }
+    }
+
+    /**
+     * Show empty state for transactions
+     */
+    showTransactionsEmpty() {
+        const emptyState = document.getElementById('transactions-empty');
+        if (emptyState) {
+            emptyState.style.display = 'block';
+        }
+    }
+
+    /**
+     * Show empty state for budgets
+     */
+    showBudgetsEmpty() {
+        const emptyState = document.getElementById('budgets-empty');
+        if (emptyState) {
+            emptyState.style.display = 'block';
+        }
+    }
+
+    /**
+     * Edit transaction
+     */
+    async editTransaction(transactionId) {
+        try {
+            const response = await this.apiRequest(`/api/transaction/${transactionId}`);
+            if (response.transaction) {
+                this.openEditTransactionModal(response.transaction);
+            }
+        } catch (error) {
+            console.error('Failed to load transaction for editing:', error);
+            this.showError('Failed to load transaction');
+        }
+    }
+
+    /**
+     * Delete transaction
+     */
+    async deleteTransaction(transactionId) {
+        const confirmed = await showConfirmation(
+            'Are you sure you want to delete this transaction? This action cannot be undone.',
+            'Delete Transaction'
+        );
+        
+        if (!confirmed) return;
+        
+        try {
+            const response = await this.apiRequest(`/transactions/${transactionId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.success) {
+                showToast('Transaction deleted successfully', 'success');
+                await this.loadTransactions(); // Reload transactions
+            }
+        } catch (error) {
+            console.error('Failed to delete transaction:', error);
+            this.showError('Failed to delete transaction');
+        }
+    }
+
+    /**
+     * Edit budget
+     */
+    async editBudget(budgetId) {
+        // Implementation similar to editTransaction
+        console.log('Edit budget:', budgetId);
+        // You would implement this similar to the transaction editing
+    }
+
+    /**
+     * Delete budget
+     */
+    async deleteBudget(budgetId) {
+        const confirmed = await showConfirmation(
+            'Are you sure you want to delete this budget?',
+            'Delete Budget'
+        );
+        
+        if (!confirmed) return;
+        
+        try {
+            const response = await this.apiRequest(`/api/budgets/${budgetId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.success) {
+                showToast('Budget deleted successfully', 'success');
+                await this.loadBudgets(); // Reload budgets
+            }
+        } catch (error) {
+            console.error('Failed to delete budget:', error);
+            this.showError('Failed to delete budget');
+        }
+    }
+    
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new FinanceApp();
