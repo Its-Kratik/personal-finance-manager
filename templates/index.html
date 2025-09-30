@@ -2037,9 +2037,32 @@
         <span aria-hidden="true">↑</span>
     </button>
 
-    <!-- JavaScript -->
-    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
     
+    <!-- Chart.js CDN first -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+
+<!-- Your app as ES6 module -->
+<script type="module">
+    // Load utilities globally first
+    window.formatCurrency = function(amount, currency = 'USD') {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currency
+        }).format(amount);
+    };
+    
+    window.formatDate = function(date) {
+        return new Date(date).toLocaleDateString();
+    };
+    
+    window.showToast = function(message, type = 'info') {
+        console.log(`Toast [${type}]: ${message}`);
+    };
+    
+    // Then load the main app
+    import('./{{ url_for("static", filename="js/app.js") }}');
+</script>
+
     <!-- Service Worker for PWA -->
     <script>
         if ('serviceWorker' in navigator) {
