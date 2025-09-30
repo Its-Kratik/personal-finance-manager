@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: finance-manager-pro
+    name: personal-finance-manager-pro
     env: python
     buildCommand: "./build.sh"
-    startCommand: "gunicorn controller:app"
+    startCommand: "gunicorn controller:app --bind 0.0.0.0:$PORT --workers 2"
     plan: starter
     envVars:
       - key: PYTHON_VERSION
@@ -14,9 +14,7 @@ services:
         value: production
       - key: DEBUG
         value: false
-      - key: FORCE_HTTPS
-        value: true
 
 databases:
-  - name: finance-db
+  - name: finance-manager-db
     plan: starter
