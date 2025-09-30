@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: finance-manager-pro
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn controller:app"
+    plan: starter
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: FORCE_HTTPS
+        value: true
+
+databases:
+  - name: finance-db
+    plan: starter
