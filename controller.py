@@ -215,23 +215,20 @@ def internal_error(error):
         return jsonify({'error': 'Internal server error', 'message': 'Something went wrong'}), 500
     return render_template('index.html'), 500
 
-# Database initialization flag
-_initialized = False
+# Database Initialization (Flask 2.3+ compatible)
+def initialize_database():
+    """Initialize database and seed data on startup"""
+    try:
+        logger.info("Initializing application...")
+        model.init_db()
+        model.seed_default_categories()
+        logger.info("Application initialized successfully")
+    except Exception as e:
+        logger.critical(f"Application initialization failed: {str(e)}")
+        raise
 
-@app.before_request
-def initialize_application():
-    """Initialize database and application (once)"""
-    global _initialized
-    if not _initialized:
-        try:
-            logger.info("Initializing application...")
-            model.init_db()
-            model.seed_default_categories()
-            logger.info("Application initialized successfully")
-            _initialized = True
-        except Exception as e:
-            logger.critical(f"Application initialization failed: {str(e)}")
-            raise
+# Initialize immediately when module loads
+initialize_database()
 
 
 # Security Headers
